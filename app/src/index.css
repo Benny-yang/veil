@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+
+  html,
+  body {
+    @apply bg-cream text-charcoal font-sans antialiased;
+    width: 100%;
+    min-height: 100vh;
+  }
+}
+
+/* ── 手機版：main 內容底部留白（避免被底部 nav 遮蓋） ── */
+@media (max-width: 767px) {
+  main {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}
