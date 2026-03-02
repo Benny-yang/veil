@@ -1,7 +1,19 @@
-node_modules/
-dist/
+# 環境設定（包含敏感資訊，絕不提交）
 .env
-.env.local
+.env.*
+!.env.example
+
+# Go 編譯輸出
+bin/
+*.exe
+*.out
+
+# 系統檔案
 .DS_Store
 *.log
-.vite/
+
+# 上傳檔案
+uploads/
+
+# 編譯後的 binary
+server
