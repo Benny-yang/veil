@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import useIsMobile from '../hooks/useIsMobile'
-import { Camera, CheckCircle2, X, Upload, Phone } from 'lucide-react'
+import { Camera, CheckCircle2, X, Upload, Phone, Eye, EyeOff } from 'lucide-react'
 
 const INITIAL_PROFILE = {
     avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=240&h=240&fit=crop&crop=face',
@@ -58,11 +58,11 @@ function Overlay({ onClose, children }) {
 }
 
 // ── 真人驗證 Modal ────────────────────────────────────────────────────────────
-function RealPersonModal({ onClose, onSuccess }) {
+function RealPersonModal({ onClose, onSubmit }) {
     const [platform, setPlatform] = useState('')
     const [profileUrl, setProfileUrl] = useState('')
     const [photo, setPhoto] = useState(null)
-    const [submitted, setSubmitted] = useState(false)
+    const [submitting, setSubmitting] = useState(false)
     const fileRef = useRef()
 
     const today = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -80,8 +80,9 @@ function RealPersonModal({ onClose, onSuccess }) {
 
     const handleSubmit = () => {
         if (!canSubmit) return
-        setSubmitted(true)
-        setTimeout(() => { onSuccess(); onClose() }, 1800)
+        setSubmitting(true)
+        // 回傳給 Settings 層處理狀態，0.8 秒後關閉
+        setTimeout(() => { onSubmit(); onClose() }, 800)
     }
 
     const labelStyle = { fontSize: 13, color: '#5C5650', fontFamily: font, marginBottom: 6, display: 'block' }
@@ -112,7 +113,6 @@ function RealPersonModal({ onClose, onSuccess }) {
                         ✓ 照片必須是本人拍攝（非截圖）
                     </span>
                 </div>
-                {/* 示意圖 */}
                 <div style={{ marginTop: 12, borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
                     <img src="/verify_example.png" alt="驗證示意圖" style={{ width: '100%', height: 160, objectFit: 'cover', objectPosition: 'center 60%', display: 'block' }} />
                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', padding: '6px 12px' }}>
@@ -170,9 +170,9 @@ function RealPersonModal({ onClose, onSuccess }) {
                 )}
             </div>
 
-            {submitted ? (
-                <div style={{ textAlign: 'center', color: '#4CAF50', fontSize: 14, fontFamily: font, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <CheckCircle2 size={16} strokeWidth={2} /> 提交成功，審核中⋯
+            {submitting ? (
+                <div style={{ textAlign: 'center', color: '#8C8479', fontSize: 14, fontFamily: font, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <CheckCircle2 size={16} strokeWidth={2} color="#C4A882" /> 提交中⋯
                 </div>
             ) : (
                 <button onClick={handleSubmit} disabled={!canSubmit} style={{
@@ -189,6 +189,8 @@ function RealPersonModal({ onClose, onSuccess }) {
         </Overlay>
     )
 }
+
+
 
 // ── 簡訊驗證 Modal ────────────────────────────────────────────────────────────
 function SmsModal({ onClose, initialPhone, onSuccess }) {
@@ -319,6 +321,146 @@ const SIDEBAR_ITEMS = [
     { key: 'contact', label: '聯絡我們' },
 ]
 
+// ── 帳號管理 Section ──────────────────────────────────────────────────────────
+function AccountSection() {
+    const [showCurrent, setShowCurrent] = useState(false)
+    const [showNew, setShowNew] = useState(false)
+    const [showConfirm, setShowConfirm] = useState(false)
+    const [currentPw, setCurrentPw] = useState('')
+    const [newPw, setNewPw] = useState('')
+    const [confirmPw, setConfirmPw] = useState('')
+    const [saved, setSaved] = useState(false)
+    const [error, setError] = useState('')
+
+    const inputStyle = {
+        width: '100%', border: '1.5px solid #E8DDD0', borderRadius: 8,
+        padding: '10px 14px 10px 14px', paddingRight: 42,
+        fontSize: 14, fontFamily: font, color: '#1C1A18',
+        outline: 'none', backgroundColor: '#FAFAFA', boxSizing: 'border-box',
+    }
+
+    const ToggleBtn = ({ show, setShow }) => (
+        <button
+            type="button"
+            onClick={() => setShow(s => !s)}
+            style={{
+                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#8C8479', display: 'flex', alignItems: 'center', padding: 0,
+            }}
+        >
+            {show ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
+        </button>
+    )
+
+    const handleSave = () => {
+        setError('')
+        if (!currentPw) { setError('請輸入目前密碼'); return }
+        if (newPw.length < 8) { setError('新密碼至少 8 個字元'); return }
+        if (newPw !== confirmPw) { setError('兩次輸入的密碼不一致'); return }
+        setSaved(true)
+        setCurrentPw(''); setNewPw(''); setConfirmPw('')
+        setTimeout(() => setSaved(false), 2500)
+    }
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <div>
+                <h2 style={{ fontSize: 20, fontWeight: 500, color: '#1C1A18', fontFamily: font, margin: '0 0 14px' }}>帳號管理</h2>
+                <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
+            </div>
+
+            {/* 登入資訊 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#1C1A18', fontFamily: font }}>登入資訊</span>
+                <FieldRow label="登入信箱">
+                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>my_account@veil.tw</span>
+                </FieldRow>
+                <FieldRow label="帳號名稱">
+                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>my_account</span>
+                </FieldRow>
+            </div>
+
+            <div style={{ height: 1, backgroundColor: '#F0EBE3' }} />
+
+            {/* 修改密碼 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <span style={{ fontSize: 14, fontWeight: 500, color: '#1C1A18', fontFamily: font }}>修改密碼</span>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 13, color: '#5C5650', fontFamily: font }}>目前密碼</span>
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            type={showCurrent ? 'text' : 'password'}
+                            value={currentPw}
+                            onChange={e => setCurrentPw(e.target.value)}
+                            placeholder="輸入目前密碼"
+                            style={inputStyle}
+                        />
+                        <ToggleBtn show={showCurrent} setShow={setShowCurrent} />
+                    </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 13, color: '#5C5650', fontFamily: font }}>新密碼</span>
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            type={showNew ? 'text' : 'password'}
+                            value={newPw}
+                            onChange={e => setNewPw(e.target.value)}
+                            placeholder="至少 8 個字元"
+                            style={inputStyle}
+                        />
+                        <ToggleBtn show={showNew} setShow={setShowNew} />
+                    </div>
+                    {newPw && newPw.length < 8 && (
+                        <span style={{ fontSize: 12, color: '#E07A5F', fontFamily: font }}>密碼至少 8 個字元</span>
+                    )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 13, color: '#5C5650', fontFamily: font }}>確認新密碼</span>
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            type={showConfirm ? 'text' : 'password'}
+                            value={confirmPw}
+                            onChange={e => setConfirmPw(e.target.value)}
+                            placeholder="再次輸入新密碼"
+                            style={{ ...inputStyle, borderColor: confirmPw && confirmPw !== newPw ? '#E07A5F' : '#E8DDD0' }}
+                        />
+                        <ToggleBtn show={showConfirm} setShow={setShowConfirm} />
+                    </div>
+                    {confirmPw && confirmPw !== newPw && (
+                        <span style={{ fontSize: 12, color: '#E07A5F', fontFamily: font }}>兩次密碼不一致</span>
+                    )}
+                </div>
+
+                {error && (
+                    <div style={{ fontSize: 13, color: '#E07A5F', fontFamily: font, backgroundColor: '#FDF6F6', borderRadius: 8, padding: '10px 14px' }}>
+                        {error}
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
+                    <button
+                        onClick={handleSave}
+                        style={{ padding: '12px 40px', borderRadius: 8, border: 'none', backgroundColor: '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: 'pointer' }}
+                        onMouseEnter={e => e.currentTarget.style.opacity = '.85'}
+                        onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                    >
+                        更新密碼
+                    </button>
+                    {saved && (
+                        <span style={{ fontSize: 13, color: '#4CAF50', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <CheckCircle2 size={14} strokeWidth={2} />密碼已更新
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function PlaceholderSection({ title, desc }) {
     return (
         <div>
@@ -369,6 +511,10 @@ export default function Settings() {
     const [saved, setSaved] = useState(false)
     const [showRealModal, setShowRealModal] = useState(false)
     const [showSmsModal, setShowSmsModal] = useState(false)
+    // 真人驗證狀態: 'none' | 'pending' | 'verified' | 'failed'
+    const [realPersonStatus, setRealPersonStatus] = useState('none')
+    const [realPersonFailureReason, setRealPersonFailureReason] = useState('')
+    const [showFailureDetail, setShowFailureDetail] = useState(false)
     const avatarRef = useRef()
 
     const set = (k, v) => setProfile(prev => ({ ...prev, [k]: v }))
@@ -383,21 +529,26 @@ export default function Settings() {
     }
 
     const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2200) }
-
-    const VERIFY_ROWS = [
-        {
-            label: '真人驗證',
-            desc: profile.realPersonVerified ? '已驗證' : '未驗證・點此驗證',
-            verified: profile.realPersonVerified,
-            onAction: () => setShowRealModal(true),
-        },
-        {
-            label: '簡訊驗證',
-            desc: profile.smsVerified ? `已驗證（${profile.phone}）` : '未驗證・點此驗證',
-            verified: profile.smsVerified,
-            onAction: () => setShowSmsModal(true),
-        },
+    // Mock: 提交後與後端同步審核結果，這裡用亂數模擬
+    const MOCK_FAILURE_REASONS = [
+        '自拍照片中的手寫文字不清晰，無法辨識帳號或日期',
+        '照片疑似為截圖或非本人拍攝，請重新拍攝真實照片',
     ]
+
+    const handleRealPersonSubmit = () => {
+        setShowRealModal(false)
+        setRealPersonStatus('pending')
+        // Mock 審核結果（2.5 秒後模擬）
+        setTimeout(() => {
+            if (Math.random() < 0.35) {
+                const reason = MOCK_FAILURE_REASONS[Math.floor(Math.random() * MOCK_FAILURE_REASONS.length)]
+                setRealPersonStatus('failed')
+                setRealPersonFailureReason(reason)
+            } else {
+                setRealPersonStatus('verified')
+            }
+        }, 2500)
+    }
 
     const isMobile = useIsMobile()
 
@@ -495,21 +646,69 @@ export default function Settings() {
                             {/* 驗證狀態（真人 + 簡訊） */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <span style={{ fontSize: 13, color: '#5C5650', fontFamily: font }}>驗證狀態</span>
-                                {VERIFY_ROWS.map(({ label, desc, verified, onAction }) => (
-                                    <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                        <span style={{ fontSize: 14, color: '#1C1A18', fontFamily: font }}>{label}</span>
-                                        {verified ? (
+
+                                {/* 真人驗證 — 四種狀態 */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: 14, color: '#1C1A18', fontFamily: font }}>真人驗證</span>
+                                        {realPersonStatus === 'verified' && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#E8F5E9', padding: '4px 10px', borderRadius: 10 }}>
                                                 <CheckCircle2 size={12} color="#4CAF50" strokeWidth={2} />
-                                                <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, fontFamily: font }}>{desc}</span>
+                                                <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, fontFamily: font }}>已驗證</span>
                                             </div>
-                                        ) : (
-                                            <button onClick={onAction} style={{ backgroundColor: '#F8F4EE', padding: '4px 10px', borderRadius: 10, border: '1px solid #E8DDD0', cursor: 'pointer' }}>
-                                                <span style={{ fontSize: 11, color: '#8C8479', fontWeight: 500, fontFamily: font }}>{desc}</span>
+                                        )}
+                                        {realPersonStatus === 'pending' && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#FBF8F0', padding: '4px 10px', borderRadius: 10 }}>
+                                                <span style={{ fontSize: 11, color: '#C4A882', fontWeight: 500, fontFamily: font }}>審核中</span>
+                                            </div>
+                                        )}
+                                        {realPersonStatus === 'failed' && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#FEF3F2', padding: '4px 10px', borderRadius: 10 }}>
+                                                    <X size={11} color="#E07A5F" strokeWidth={2} />
+                                                    <span style={{ fontSize: 11, color: '#E07A5F', fontWeight: 500, fontFamily: font }}>審核未通過</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {realPersonStatus === 'none' && (
+                                            <button onClick={() => setShowRealModal(true)} style={{ backgroundColor: '#F8F4EE', padding: '4px 10px', borderRadius: 10, border: '1px solid #E8DDD0', cursor: 'pointer' }}>
+                                                <span style={{ fontSize: 11, color: '#8C8479', fontWeight: 500, fontFamily: font }}>未驗證．點此驗證</span>
                                             </button>
                                         )}
                                     </div>
-                                ))}
+
+                                    {/* 審核失敗的擴展內容 */}
+                                    {realPersonStatus === 'failed' && (
+                                        <div style={{ backgroundColor: '#FEF3F2', borderRadius: 8, padding: '12px 14px', borderLeft: '3px solid #E07A5F' }}>
+                                            <div style={{ fontSize: 12, color: '#8C8479', fontFamily: font, marginBottom: 6 }}>❌ 未通過原因</div>
+                                            <div style={{ fontSize: 13, color: '#1C1A18', fontFamily: font, lineHeight: 1.7, marginBottom: 12 }}>
+                                                {realPersonFailureReason}
+                                            </div>
+                                            <button
+                                                onClick={() => { setRealPersonStatus('none'); setRealPersonFailureReason(''); setShowRealModal(true) }}
+                                                style={{ padding: '7px 16px', borderRadius: 8, border: 'none', backgroundColor: '#1C1A18', color: '#F2EDE6', fontSize: 12, fontFamily: font, cursor: 'pointer' }}
+                                            >
+                                                重新驗證
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 簡訊驗證 */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: 14, color: '#1C1A18', fontFamily: font }}>簡訊驗證</span>
+                                    {profile.smsVerified ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#E8F5E9', padding: '4px 10px', borderRadius: 10 }}>
+                                            <CheckCircle2 size={12} color="#4CAF50" strokeWidth={2} />
+                                            <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, fontFamily: font }}>已驗證（{profile.phone}）</span>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setShowSmsModal(true)} style={{ backgroundColor: '#F8F4EE', padding: '4px 10px', borderRadius: 10, border: '1px solid #E8DDD0', cursor: 'pointer' }}>
+                                            <span style={{ fontSize: 11, color: '#8C8479', fontWeight: 500, fontFamily: font }}>未驗證．點此驗證</span>
+                                        </button>
+                                    )}
+                                </div>
+
                                 <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
                             </div>
 
@@ -550,7 +749,7 @@ export default function Settings() {
                         </div>
                     )}
 
-                    {activeKey === 'account' && <PlaceholderSection title="帳號管理" desc="帳號管理功能即將推出" />}
+                    {activeKey === 'account' && <AccountSection />}
                     {activeKey === 'verify' && <PlaceholderSection title="實名驗證" desc="實名驗證功能即將推出" />}
                     {activeKey === 'terms' && <TermsSection />}
                     {activeKey === 'privacy' && <PrivacySection />}
@@ -562,7 +761,7 @@ export default function Settings() {
             {showRealModal && (
                 <RealPersonModal
                     onClose={() => setShowRealModal(false)}
-                    onSuccess={() => set('realPersonVerified', true)}
+                    onSubmit={handleRealPersonSubmit}
                 />
             )}
             {showSmsModal && (

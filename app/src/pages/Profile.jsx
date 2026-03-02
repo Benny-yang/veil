@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { Plus, UserPlus, Mail, Star, X, Heart, MessageCircle, Send, BadgeCheck, Share2, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { Plus, Star, BadgeCheck, Heart, MessageCircle, Settings } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import PostModal from '../components/PostModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 當前登入者（實際應從 auth context 取得）
@@ -289,209 +290,7 @@ function AddWorkModal({ onClose }) {
     )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 作品詳細 Modal（與 Home PostModal 相同樣式）
-// ─────────────────────────────────────────────────────────────────────────────
-function WorkModal({ work, user, onClose }) {
-    const [liked, setLiked] = useState(false)
-    const [comment, setComment] = useState('')
-    const [imgIdx, setImgIdx] = useState(0)
-    const isMobile = useIsMobile()
-    const images = work?.images?.length ? work.images : (work?.image ? [work.image] : [])
-    if (!work) return null
 
-    /* ── 手機版：Instagram 全螢幕設計 ─────────────────── */
-    if (isMobile) {
-        return (
-            <div style={{
-                position: 'fixed', inset: 0, zIndex: 2000,
-                backgroundColor: '#000000',
-                display: 'flex', flexDirection: 'column',
-            }}>
-                {/* 照片區：黑底 contain */}
-                <div style={{
-                    width: '100%', height: '52vw', maxHeight: 360, flexShrink: 0,
-                    position: 'relative', backgroundColor: '#000',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                    <img
-                        src={images[imgIdx]} alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    />
-                    {/* Close X */}
-                    <button onClick={onClose} style={{
-                        position: 'absolute', top: 12, right: 12, zIndex: 10,
-                        background: 'rgba(0,0,0,0.4)', border: 'none', borderRadius: '50%',
-                        width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        cursor: 'pointer', color: '#FFFFFF',
-                    }}><X size={16} /></button>
-                    {/* 多圖點指示 */}
-                    {images.length > 1 && (
-                        <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 5 }}>
-                            {images.map((_, i) => (
-                                <button
-                                    key={i} onClick={() => setImgIdx(i)}
-                                    style={{ width: i === imgIdx ? 16 : 6, height: 6, borderRadius: 3, border: 'none', cursor: 'pointer', padding: 0, backgroundColor: i === imgIdx ? '#FFFFFF' : 'rgba(255,255,255,0.45)', transition: 'all 0.2s' }}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* 內容區：白底，可捲動 */}
-                <div style={{ flex: 1, backgroundColor: '#FFFFFF', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    {/* 作者列 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #F0EBE3' }}>
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
-                            <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{user.displayName || user.name}</span>
-                            <span style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <Star size={10} color="#C4A882" fill="#C4A882" strokeWidth={0} />{user.rating}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* 說明 + 時間 */}
-                    <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid #F0EBE3' }}>
-                        <p style={{ margin: 0, fontSize: 13, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.7 }}>{work.desc}</p>
-                        <div style={{ marginTop: 4, fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>2 小時前</div>
-                    </div>
-
-                    {/* 留言列表（可捲動） */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {(work.mockComments || []).map((c, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#E8DDD0', flexShrink: 0, marginTop: 2 }} />
-                                <div style={{ flex: 1 }}>
-                                    <span style={{ fontWeight: 600, fontSize: 12, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{c.user}</span>
-                                    <span style={{ fontSize: 13, color: '#3A3531', fontFamily: 'Noto Sans TC, sans-serif', marginLeft: 6 }}>{c.text}</span>
-                                    <div style={{ fontSize: 10, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 2 }}>{c.time}</div>
-                                </div>
-                            </div>
-                        ))}
-                        {(!work.mockComments || work.mockComments.length === 0) && (
-                            <div style={{ fontSize: 12, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', textAlign: 'center', marginTop: 16 }}>還沒有留言，快來第一個留言</div>
-                        )}
-                    </div>
-
-                    {/* 底部：actions + 輸入 */}
-                    <div style={{ borderTop: '1px solid #F0EBE3' }}>
-                        <div style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '10px 16px' }}>
-                            <button onClick={() => setLiked(l => !l)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 5, color: liked ? '#C4A882' : '#8C8479', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>
-                                <Heart size={20} strokeWidth={1.5} fill={liked ? '#C4A882' : 'none'} />{work.likes + (liked ? 1 : 0)}
-                            </button>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#8C8479', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>
-                                <MessageCircle size={20} strokeWidth={1.5} />{work.comments}
-                            </span>
-                            <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#8C8479', marginLeft: 'auto' }}>
-                                <Share2 size={18} strokeWidth={1.5} />
-                            </button>
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 16px 20px', borderTop: '1px solid #F0EBE3' }}>
-                            <input value={comment} onChange={e => setComment(e.target.value)} placeholder="留言..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#1C1A18', backgroundColor: 'transparent' }} />
-                            <button onClick={() => setComment('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: comment ? '#C4A882' : '#C8C0B4', padding: 0 }}>
-                                <Send size={17} strokeWidth={1.5} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )
-    }
-
-    /* ── 桌面版：1000x680 橫向 Modal ─────────────────── */
-    return (
-        <div onClick={onClose} style={{
-            position: 'fixed', inset: 0, zIndex: 2000,
-            backgroundColor: 'rgba(28,26,24,0.65)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)',
-        }}>
-            <div onClick={e => e.stopPropagation()} style={{
-                width: 1000, height: 680, backgroundColor: '#FFFFFF',
-                borderRadius: 16, display: 'flex', overflow: 'hidden',
-                boxShadow: '0 24px 60px rgba(0,0,0,0.2)', position: 'relative',
-            }}>
-                <button onClick={onClose} style={{
-                    position: 'absolute', top: 16, right: 16, zIndex: 10,
-                    background: 'rgba(28,26,24,0.5)', border: 'none', borderRadius: '50%',
-                    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', color: '#F2EDE6',
-                }}><X size={16} /></button>
-
-                {/* Left: Image */}
-                <div style={{ width: 520, flexShrink: 0, overflow: 'hidden', borderRadius: '16px 0 0 16px', position: 'relative' }}>
-                    <img src={images[imgIdx]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'opacity 0.2s' }} />
-                    {images.length > 1 && (
-                        <>
-                            <button onClick={() => setImgIdx(i => (i - 1 + images.length) % images.length)} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.85)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <ChevronLeft size={16} strokeWidth={1.5} color="#1C1A18" />
-                            </button>
-                            <button onClick={() => setImgIdx(i => (i + 1) % images.length)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', width: 36, height: 36, borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.85)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <ChevronRight size={16} strokeWidth={1.5} color="#1C1A18" />
-                            </button>
-                            <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6 }}>
-                                {images.map((_, i) => (
-                                    <button key={i} onClick={() => setImgIdx(i)} style={{ width: i === imgIdx ? 18 : 7, height: 7, borderRadius: 4, border: 'none', cursor: 'pointer', padding: 0, backgroundColor: i === imgIdx ? '#FFFFFF' : 'rgba(255,255,255,0.5)', transition: 'all 0.2s' }} />
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Right: Info + Comments */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 24px 0 24px', overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                        <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
-                            <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                        <div>
-                            <div style={{ fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14, fontWeight: 600, color: '#1C1A18' }}>{user.displayName || user.name}</div>
-                            <div style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>2 小時前</div>
-                        </div>
-                    </div>
-                    <p style={{ fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14, color: '#3A3531', lineHeight: 1.8, marginBottom: 12 }}>{work.desc}</p>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                        {(work.tags || []).map(tag => (
-                            <span key={tag} style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', backgroundColor: '#F5F1EC', padding: '3px 10px', borderRadius: 20 }}>#{tag}</span>
-                        ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: 20, alignItems: 'center', paddingBottom: 14, borderBottom: '1px solid #EDE8E1', marginBottom: 14 }}>
-                        <button onClick={() => setLiked(l => !l)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 5, color: liked ? '#C4A882' : '#8C8479', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>
-                            <Heart size={18} strokeWidth={1.5} fill={liked ? '#C4A882' : 'none'} />{work.likes + (liked ? 1 : 0)}
-                        </button>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#8C8479', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>
-                            <MessageCircle size={18} strokeWidth={1.5} />{work.comments}
-                        </span>
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#8C8479', marginLeft: 'auto' }}>
-                            <Share2 size={17} strokeWidth={1.5} />
-                        </button>
-                    </div>
-                    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
-                        {(work.mockComments || []).map((c, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 8 }}>
-                                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#E8DDD0', flexShrink: 0 }} />
-                                <div>
-                                    <span style={{ fontWeight: 600, fontSize: 12, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{c.user}</span>
-                                    <span style={{ fontSize: 12, color: '#3A3531', fontFamily: 'Noto Sans TC, sans-serif', marginLeft: 6 }}>{c.text}</span>
-                                    <div style={{ fontSize: 10, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 2 }}>{c.time}</div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #EDE8E1', paddingTop: 14, paddingBottom: 16 }}>
-                        <input value={comment} onChange={e => setComment(e.target.value)} placeholder="留言..." style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#1C1A18', backgroundColor: 'transparent' }} />
-                        <button onClick={() => setComment('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: comment ? '#C4A882' : '#C8C0B4', padding: 0 }}>
-                            <Send size={17} strokeWidth={1.5} />
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 粉絲 / 追蹤名單 Modal
@@ -511,6 +310,7 @@ const MOCK_FOLLOWING = [
 ]
 
 function FollowListModal({ title, list, onClose }) {
+    const navigate = useNavigate()
     return (
         <div onClick={onClose} style={{
             position: 'fixed', inset: 0, zIndex: 3000,
@@ -532,10 +332,13 @@ function FollowListModal({ title, list, onClose }) {
                 {/* List */}
                 <div style={{ overflowY: 'auto', padding: '8px 0' }}>
                     {list.map(u => (
-                        <div key={u.id} style={{
-                            display: 'flex', alignItems: 'center', gap: 12,
-                            padding: '10px 20px', transition: 'background 0.15s', cursor: 'pointer',
-                        }}
+                        <div
+                            key={u.id}
+                            onClick={() => { onClose(); navigate(`/profile/${u.name}`) }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 12,
+                                padding: '10px 20px', transition: 'background 0.15s', cursor: 'pointer',
+                            }}
                             onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FAF7F4'}
                             onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
@@ -816,8 +619,8 @@ export default function Profile() {
                 ) : (
                     <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-                        gap: 8,
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        gap: 10,
                     }}>
                         {works.map(work => (
                             <WorkCell key={work.id} work={work} onClick={() => setSelectedWork(work)} />
@@ -828,7 +631,14 @@ export default function Profile() {
 
             {/* Modals */}
             {showAddWork && <AddWorkModal onClose={() => setShowAddWork(false)} />}
-            {selectedWork && <WorkModal work={selectedWork} user={user} onClose={() => setSelectedWork(null)} />}
+            {selectedWork && (
+                <PostModal
+                    item={selectedWork}
+                    author={{ ...user, name: user.displayName || user.name }}
+                    onClose={() => setSelectedWork(null)}
+                    zIndex={2000}
+                />
+            )}
             {showFollowers && <FollowListModal title={`粉絲（${user.followers}）`} list={MOCK_FOLLOWERS} onClose={() => setShowFollowers(false)} />}
             {showFollowing && <FollowListModal title={`追蹤中（${user.following}）`} list={MOCK_FOLLOWING} onClose={() => setShowFollowing(false)} />}
             {showRatings && <RatingsModal user={user} onClose={() => setShowRatings(false)} />}

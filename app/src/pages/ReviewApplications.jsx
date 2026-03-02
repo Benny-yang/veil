@@ -60,6 +60,7 @@ function ApplicantCard({ applicant, onApprove, onReject }) {
     const isApproved = applicant.status === 'approved'
     const isRejected = applicant.status === 'rejected'
     const isDone = isApproved || isRejected
+    const navigate = useNavigate()
 
     return (
         <div style={{
@@ -71,19 +72,29 @@ function ApplicantCard({ applicant, onApprove, onReject }) {
         }}>
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                    width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                    backgroundColor: applicant.avatarColor,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, color: '#FFFFFF', fontWeight: 700,
-                }}>
+                <div
+                    onClick={() => navigate(`/profile/${applicant.name}`)}
+                    style={{
+                        width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                        backgroundColor: applicant.avatarColor,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 14, color: '#FFFFFF', fontWeight: 700,
+                        cursor: 'pointer',
+                    }}
+                >
                     {applicant.name[0].toUpperCase()}
                 </div>
                 <div style={{ flex: 1 }}>
-                    <div style={{
-                        fontSize: 14, fontWeight: 600, color: '#1C1A18',
-                        fontFamily: 'Noto Sans TC, sans-serif'
-                    }}>{applicant.name}</div>
+                    <div
+                        onClick={() => navigate(`/profile/${applicant.name}`)}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                        style={{
+                            fontSize: 14, fontWeight: 600, color: '#1C1A18',
+                            fontFamily: 'Noto Sans TC, sans-serif',
+                            cursor: 'pointer', display: 'inline-block',
+                        }}
+                    >{applicant.name}</div>
                     <div style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 2 }}>
                         申請於 {applicant.appliedAt}
                     </div>

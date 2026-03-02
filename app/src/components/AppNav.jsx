@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, X, User, Settings, LogOut } from 'lucide-react'
+import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, X, User, LogOut } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +80,7 @@ const TYPE_CONFIG = {
 function NotifItem({ notif, onRead }) {
     const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.like
     const { Icon, color, bg } = cfg
+    const navigate = useNavigate()
 
     return (
         <div
@@ -124,7 +125,12 @@ function NotifItem({ notif, onRead }) {
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.5 }}>
                     {notif.user && (
-                        <strong style={{ fontWeight: 600 }}>{notif.user} </strong>
+                        <strong
+                            style={{ fontWeight: 600, cursor: 'pointer' }}
+                            onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                            onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                            onClick={e => { e.stopPropagation(); onRead(notif.id); navigate(`/profile/${notif.user}`) }}
+                        >{notif.user} </strong>
                     )}
                     {notif.text}
                 </div>
@@ -157,11 +163,15 @@ function NotifItem({ notif, onRead }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function NotifPanel({ notifications, onRead, onReadAll, onClose }) {
     const unreadCount = notifications.filter(n => !n.read).length
+    const isMobile = useIsMobile()
 
     return (
         <div style={{
-            position: 'absolute', top: 44, right: 0,
-            width: 340, backgroundColor: '#FFFFFF',
+            position: isMobile ? 'fixed' : 'absolute',
+            top: isMobile ? 60 : 44,
+            right: isMobile ? 8 : 0,
+            width: isMobile ? Math.min(320, window.innerWidth - 16) : 340,
+            backgroundColor: '#FFFFFF',
             borderRadius: 12, boxShadow: '0 8px 32px rgba(28,26,24,0.18)',
             border: '1px solid #F0EBE3',
             zIndex: 999, overflow: 'hidden',
@@ -222,6 +232,7 @@ function NotifPanel({ notifications, onRead, onReadAll, onClose }) {
         </div>
     )
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 通知 Bell 按鈕（含彈窗邏輯）
@@ -461,10 +472,6 @@ function UserMenu() {
         {
             icon: Bookmark, label: '我的私藏',
             onClick: () => { setOpen(false); navigate('/collection') },
-        },
-        {
-            icon: Settings, label: '設定',
-            onClick: () => { setOpen(false); navigate('/settings') },
         },
     ]
 

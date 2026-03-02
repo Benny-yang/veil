@@ -57,43 +57,112 @@ function InputField({ label, type = 'text', value, onChange, placeholder, rightE
     )
 }
 
+// ── 服務條款 Modal ───────────────────────────────────────────────────────────
+function LegalModal({ title, onClose, children }) {
+    return (
+        <div onClick={onClose} style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            backgroundColor: 'rgba(28,26,24,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)', padding: '24px 16px',
+        }}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: '100%', maxWidth: 480, maxHeight: '78vh',
+                backgroundColor: '#FFFFFF', borderRadius: 20,
+                display: 'flex', flexDirection: 'column',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.18)', overflow: 'hidden',
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 16px', borderBottom: '1px solid #F0EBE3', flexShrink: 0 }}>
+                    <span style={{ fontSize: 16, fontWeight: 600, color: '#1C1A18', fontFamily: font }}>{title}</span>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8C8479', fontSize: 22, lineHeight: 1, padding: 0 }}>×</button>
+                </div>
+                <div style={{ overflowY: 'auto', padding: '20px 24px 28px', fontSize: 13, color: '#5C5650', fontFamily: font, lineHeight: 2 }}>
+                    {children}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 // ── Step: Welcome Popup ──────────────────────────────────────────────────────
 function WelcomePopup({ onLogin, onRegister, onGuest }) {
+    const [showTerms, setShowTerms] = useState(false)
+    const [showPrivacy, setShowPrivacy] = useState(false)
+
     const primaryBtnStyle = (bg, color) => ({
         width: '100%', padding: '14px', borderRadius: 24, border: 'none',
         backgroundColor: bg, color, fontSize: 14, fontWeight: 500,
         fontFamily: font, cursor: 'pointer', letterSpacing: 1,
     })
 
+    const linkStyle = {
+        color: '#C4A882', cursor: 'pointer', textDecoration: 'none',
+    }
+
     return (
-        <div style={{ ...modalStyle, gap: 32 }}>
-            {/* Logo */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-                <div style={{ fontSize: 48, fontFamily: logoFont, fontWeight: 300, color: '#1C1A18', letterSpacing: 8 }}>VEIL</div>
-                <div style={{ fontSize: 14, color: '#8C8479', fontFamily: font, letterSpacing: 2 }}>每一件物品，都有它的故事</div>
+        <>
+            <div style={{ ...modalStyle, gap: 32 }}>
+                {/* Logo */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                    <div style={{ fontSize: 48, fontFamily: logoFont, fontWeight: 300, color: '#1C1A18', letterSpacing: 8 }}>VEIL</div>
+                    <div style={{ fontSize: 14, color: '#8C8479', fontFamily: font, letterSpacing: 2 }}>每一件物品，都有它的故事</div>
+                </div>
+
+                {/* Buttons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}>
+                    <button onClick={onLogin} style={primaryBtnStyle('#C4A882', '#FFFFFF')}>登入</button>
+                    <button onClick={onRegister} style={primaryBtnStyle('#1C1A18', '#F2EDE6')}>加入 VEIL</button>
+                </div>
+
+                {/* Guest */}
+                <button onClick={onGuest} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8C8479', fontFamily: font }}>
+                    訪客瀏覽
+                </button>
+
+                {/* Footer */}
+                <p style={{ fontSize: 11, color: '#8C8479', fontFamily: font, textAlign: 'center', margin: 0 }}>
+                    點擊註冊，即表示你同意{' '}
+                    <span
+                        style={linkStyle}
+                        onClick={() => setShowTerms(true)}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                    >服務條款</span>
+                    {' 及 '}
+                    <span
+                        style={linkStyle}
+                        onClick={() => setShowPrivacy(true)}
+                        onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                        onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                    >隱私權條款</span>
+                </p>
             </div>
 
-            {/* Buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}>
-                <button onClick={onLogin} style={primaryBtnStyle('#C4A882', '#FFFFFF')}>登入</button>
-                <button onClick={onRegister} style={primaryBtnStyle('#1C1A18', '#F2EDE6')}>加入 VEIL</button>
-            </div>
+            {showTerms && (
+                <LegalModal title="服務條款" onClose={() => setShowTerms(false)}>
+                    <p style={{ color: '#B0A89A', fontSize: 12, marginTop: 0 }}>最後更新：2025 年 1 月 1 日</p>
+                    <p><strong style={{ color: '#1C1A18' }}>1. 服務範圍</strong><br />Veil 為提供用戶展示、交流品味衣著的線上社群平台。所有買賣行為均由用戶自行承擔風險。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>2. 帳號責任</strong><br />用戶應妥善保管帳號密碼，並對帳號下的所有行為負責。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>3. 禁止行為</strong><br />嚴禁散布仿冒品、詐騙、或任何違法物品。違規帳號將被停權。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>4. 爭議處理</strong><br />交易爭議由買賣雙方自行協商。平台保留凍結帳號以配合調查的權利。</p>
+                    <p style={{ color: '#B0A89A', fontSize: 12 }}>此為暫定內容，正式條款將於正式上線前公佈。</p>
+                </LegalModal>
+            )}
 
-            {/* Guest */}
-            <button onClick={onGuest} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8C8479', fontFamily: font }}>
-                訪客瀏覽
-            </button>
-
-            {/* Footer */}
-            <p style={{ fontSize: 11, color: '#8C8479', fontFamily: font, textAlign: 'center', margin: 0 }}>
-                點擊註冊，即表示你同意{' '}
-                <span style={{ color: '#C4A882', cursor: 'pointer' }}>服務條款</span>
-                {' 及 '}
-                <span style={{ color: '#C4A882', cursor: 'pointer' }}>隱私權條款</span>
-            </p>
-        </div>
+            {showPrivacy && (
+                <LegalModal title="隱私權條款" onClose={() => setShowPrivacy(false)}>
+                    <p style={{ color: '#B0A89A', fontSize: 12, marginTop: 0 }}>最後更新：2025 年 1 月 1 日</p>
+                    <p><strong style={{ color: '#1C1A18' }}>1. 資料蒐集</strong><br />我們蒐集您的帳號資訊、交易紀錄，以提供更好的服務。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>2. 資料使用</strong><br />您的資料不會販售給第三方。我們可能以匿名方式用於服務改善。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>3. 評價匿名</strong><br />所有買賣評價均以匿名方式顯示，以保護雙方隱私。</p>
+                    <p><strong style={{ color: '#1C1A18' }}>4. Cookie</strong><br />我們使用 Cookie 維持登入狀態與用戶偏好設定。</p>
+                    <p style={{ color: '#B0A89A', fontSize: 12 }}>此為暫定內容，正式條款將於正式上線前公佈。</p>
+                </LegalModal>
+            )}
+        </>
     )
 }
+
 
 // ── Step: Login Form ─────────────────────────────────────────────────────────
 function LoginForm({ onBack, onSuccess }) {

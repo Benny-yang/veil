@@ -270,84 +270,98 @@ function ZoneRow({ zone, tabKey, onReview, onChat, onEdit }) {
 function ApplicationRow({ app }) {
     const isPassed = app.appStatus === '已通過'
     const isPending = app.appStatus === '審核中'
+    const isMobile = useIsMobile()
+
+    const actions = (
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
+            {isPassed && (
+                <button style={{ ...btnStyle('#C4A882', '#FFFFFF', 'none', true), ...(isMobile ? { flex: 1, justifyContent: 'center' } : {}) }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#B89970'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#C4A882'}
+                >
+                    <MessageCircle size={13} strokeWidth={1.5} />進入對話
+                </button>
+            )}
+            {isPending && (
+                <button style={{ ...btnStyle('#FFFFFF', '#8C8479', '#E8DDD0'), ...(isMobile ? { flex: 1, justifyContent: 'center' } : {}) }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F5F1EC'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                    撤回申請
+                </button>
+            )}
+            {!isPassed && (
+                <button style={{ ...btnStyle('#FFFFFF', '#1C1A18', '#E8DDD0'), ...(isMobile ? { flex: 1, justifyContent: 'center' } : {}) }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F5F1EC'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FFFFFF'}
+                >
+                    查看私藏
+                </button>
+            )}
+        </div>
+    )
 
     return (
         <div style={{
-            display: 'flex', alignItems: 'center', gap: 20,
             backgroundColor: '#FFFFFF', borderRadius: 12,
-            padding: 20,
+            padding: isMobile ? 14 : 20,
             boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
             borderLeft: isPassed ? '3px solid #2D7A4A' : isPending ? '3px solid #C4A882' : '3px solid #D4CCC4',
+            display: 'flex', flexDirection: 'column', gap: 12,
         }}>
-            {/* Thumbnail */}
-            <div style={{
-                width: 80, height: 80, borderRadius: 8, overflow: 'hidden', flexShrink: 0,
-                opacity: app.appStatus === '未通過' ? 0.5 : 1,
-            }}>
-                <img src={app.zoneImage} alt={app.zoneTitle}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-
-            {/* Info */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* 圖片 + 資訊（橫排） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 20 }}>
+                {/* Thumbnail */}
                 <div style={{
-                    fontSize: 15, fontWeight: 600, color: '#1C1A18',
-                    fontFamily: 'Noto Sans TC, sans-serif',
+                    width: isMobile ? 64 : 80, height: isMobile ? 64 : 80,
+                    borderRadius: 8, overflow: 'hidden', flexShrink: 0,
+                    opacity: app.appStatus === '未通過' ? 0.5 : 1,
                 }}>
-                    {app.zoneTitle}
+                    <img src={app.zoneImage} alt={app.zoneTitle}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+                {/* Info */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                     <div style={{
-                        width: 16, height: 16, borderRadius: '50%',
-                        backgroundColor: app.sellerAvatarColor, flexShrink: 0
-                    }} />
-                    <span style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                        {app.seller}
-                    </span>
-                    <span style={{ color: '#D4CCC4', fontSize: 12 }}>·</span>
-                    <span style={{
-                        fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
-                        display: 'flex', alignItems: 'center', gap: 3
+                        fontSize: isMobile ? 13 : 15, fontWeight: 600, color: '#1C1A18',
+                        fontFamily: 'Noto Sans TC, sans-serif',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                     }}>
-                        <Clock size={10} strokeWidth={1.5} />
-                        {app.timeLeft}
-                    </span>
+                        {app.zoneTitle}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <div style={{
+                            width: 16, height: 16, borderRadius: '50%',
+                            backgroundColor: app.sellerAvatarColor, flexShrink: 0
+                        }} />
+                        <span style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                            {app.seller}
+                        </span>
+                        <span style={{ color: '#D4CCC4', fontSize: 12 }}>·</span>
+                        <span style={{
+                            fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
+                            display: 'flex', alignItems: 'center', gap: 3
+                        }}>
+                            <Clock size={10} strokeWidth={1.5} />
+                            {app.timeLeft}
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <AppStatusBadge status={app.appStatus} />
+                        <span style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                            申請於 {app.appliedAt}
+                        </span>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <AppStatusBadge status={app.appStatus} />
-                    <span style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                        申請於 {app.appliedAt}
-                    </span>
-                </div>
+
+                {/* 桌面版：按鈕在右側 */}
+                {!isMobile && actions}
             </div>
 
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {isPassed && (
-                    <button style={btnStyle('#C4A882', '#FFFFFF', 'none', true)}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#B89970'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#C4A882'}
-                    >
-                        <MessageCircle size={13} strokeWidth={1.5} />進入對話
-                    </button>
-                )}
-                {isPending && (
-                    <button style={btnStyle('#FFFFFF', '#8C8479', '#E8DDD0')}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F5F1EC'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FFFFFF'}
-                    >
-                        撤回申請
-                    </button>
-                )}
-                {!isPassed && (
-                    <button style={btnStyle('#FFFFFF', '#1C1A18', '#E8DDD0')}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F5F1EC'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FFFFFF'}
-                    >
-                        查看私藏
-                    </button>
-                )}
-            </div>
+            {/* 手機版：按鈕在卡片底部 */}
+            {isMobile && actions}
         </div>
     )
 }

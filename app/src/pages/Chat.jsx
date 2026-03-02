@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Send, ChevronDown, ChevronUp, UserCheck, Star, Package, CreditCard, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 
@@ -594,6 +595,7 @@ export default function Chat() {
     const VIEWER_ROLE = 'seller' // 目前登入者角色（實際應從 auth 取得）
 
     const isMobile = useIsMobile()
+    const navigate = useNavigate()
     const [mobileView, setMobileView] = useState('list') // 'list' | 'chat'
 
     const [sidebarTab, setSidebarTab] = useState('zone')
@@ -892,7 +894,12 @@ export default function Chat() {
                             {activeChatMeta.peer[0].toUpperCase()}
                         </div>
                         <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                            <div
+                                onClick={() => navigate(`/profile/${activeChatMeta.peer}`)}
+                                onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
+                                onMouseLeave={e => e.currentTarget.style.textDecoration = 'none'}
+                                style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', cursor: 'pointer', display: 'inline-block' }}
+                            >
                                 {activeChatMeta.peer}
                             </div>
                             <div style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
