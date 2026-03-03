@@ -920,7 +920,7 @@ export default function PrivateCollection() {
                     ) : isMine
                         ? zones.map(zone => (
                             <ZoneRow key={zone.id} zone={zone} tabKey={activeTab}
-                                onReview={() => navigate('/review')}
+                                onReview={() => navigate(`/review/${zone.id}`)}
                                 onChat={() => navigate('/chat')}
                                 onEdit={() => setEditingZone(zone)}
                             />

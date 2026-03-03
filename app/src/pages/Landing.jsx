@@ -158,7 +158,7 @@ export default function Landing() {
                         <span className="text-[1rem] tracking-[0.3em] text-accent mb-6 block font-medium">01</span>
                         <div className="w-[40px] h-[1px] bg-accent opacity-60 mb-8"></div>
                         <h3 className="text-[2rem] font-sans font-light text-cream mb-5 leading-[1.3]">展示非凡品味</h3>
-                        <p className="text-[1rem] leading-[1.8] text-[#C8C0B4] font-sans font-light">建立專屬作品，讓懂的人找到您。每一件衣物，都是您風格的延伸。</p>
+                        <p className="text-[1rem] leading-[1.8] text-[#C8C0B4] font-sans font-light">建立專屬作品，讓懂的人找到您，每一件衣物，都是您風格的延伸。</p>
                     </div>
                     <div className="landing-scroll-reveal" style={{ transitionDelay: '0.15s' }}>
                         <span className="text-[1rem] tracking-[0.3em] text-accent mb-6 block font-medium">02</span>

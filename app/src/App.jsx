@@ -47,7 +47,7 @@ function AppLayout() {
           <Route path="/works/:id" element={<ProtectedRoute><WorkDetail /></ProtectedRoute>} />
           <Route path="/collection" element={<ProtectedRoute><PrivateCollection /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-          <Route path="/review" element={<ProtectedRoute><ReviewApplications /></ProtectedRoute>} />
+          <Route path="/review/:zoneId" element={<ProtectedRoute><ReviewApplications /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/profile/:userId" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

@@ -33,8 +33,8 @@ function normalizeZone(z) {
         seller: {
             name: z.seller?.username || z.seller_username || '',
             avatar: z.seller?.avatar_url || null,
-            avatarColor: '#C4A882',
-            rating: z.seller?.avg_rating ?? null,
+            avatarColor: z.seller?.avatar_color || '#C4A882',
+            rating: z.seller?.rating ?? null,
         },
         timeLeft: timeLeftText(z.ends_at),
         timeUrgent: isUrgent(z.ends_at),
