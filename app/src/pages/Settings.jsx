@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import useIsMobile from '../hooks/useIsMobile'
 import { Camera, CheckCircle2, X, Upload, Phone, Eye, EyeOff } from 'lucide-react'
 import { userApi, verificationApi, mediaApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 
 const BIO_MAX = 200
@@ -540,6 +541,8 @@ export default function Settings() {
 
     useEffect(() => { loadMe() }, [loadMe])
 
+    const { updateProfile } = useAuth()
+
     // ── 頭像 ─────────────────────────────────────────────────────────────────
     const handleAvatarFile = async (e) => {
         const file = e.target.files[0]
@@ -555,8 +558,10 @@ export default function Settings() {
             const res = await mediaApi.upload(file)
             const url = res.data.data?.url
             if (url) {
-                await userApi.updateAvatar({ avatar_url: url }).catch(() => { })
-                // 重新載入 me 更新頭像
+                await userApi.updateAvatar({ avatar_url: url })
+                // 同步更新 AppNav 的大頭照
+                updateProfile({ avatar_url: url })
+                // 重新載入 me 保持資料一致
                 loadMe()
             }
         } catch { /* 預覽仍保留 */ }

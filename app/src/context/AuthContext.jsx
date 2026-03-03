@@ -26,6 +26,16 @@ export function AuthProvider({ children }) {
         setCurrentUser(user)
     }, [])
 
+    /** 更新 currentUser 中的 profile 資料（如大頭照、顯示名稱）*/
+    const updateProfile = useCallback((patch) => {
+        setCurrentUser(prev => {
+            if (!prev) return prev
+            const updated = { ...prev, ...patch }
+            localStorage.setItem('veil_user', JSON.stringify(updated))
+            return updated
+        })
+    }, [])
+
     /** 登出：清除所有本地資料並導回 /auth */
     const logout = useCallback(async () => {
         try {
@@ -39,7 +49,7 @@ export function AuthProvider({ children }) {
     }, [navigate])
 
     return (
-        <AuthContext.Provider value={{ currentUser, login, logout }}>
+        <AuthContext.Provider value={{ currentUser, login, logout, updateProfile }}>
             {children}
         </AuthContext.Provider>
     )

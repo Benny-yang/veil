@@ -619,7 +619,7 @@ export default function Profile() {
                                     <span style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>{label}</span>
                                 </button>
                             ))}
-                            {user.dealCount > 0 || user.rating > 0 ? (
+                            {'rating' in profileData ? (
                                 <button onClick={openRatings} style={{
                                     display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8,
                                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
