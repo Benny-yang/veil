@@ -4,7 +4,7 @@ import { Plus, Star, BadgeCheck, Heart, MessageCircle, Settings } from 'lucide-r
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
 import { useAuth } from '../context/AuthContext'
-import { userApi, workApi, userExtendedApi } from '../services/api'
+import { userApi, workApi, userExtendedApi, mediaApi, postApi } from '../services/api'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,7 +43,8 @@ function WorkPhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
         toAdd.forEach(file => {
             const reader = new FileReader()
             reader.onload = ev => {
-                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result })
+                // 同時保留 file 物件供上傳用
+                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result, file })
                 pending--
                 if (pending === 0) {
                     const updated = [...photosRef.current, ...accumulated]
@@ -122,14 +123,47 @@ function WorkPhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 新增作品 Modal（比照 NewZoneModal 樣式）
 // ─────────────────────────────────────────────────────────────────────────────
-function AddWorkModal({ onClose }) {
+function AddWorkModal({ onClose, onSuccess }) {
     const [values, setValues] = React.useState({
         desc: '', photos: [], coverId: '',
     })
+    const [saving, setSaving] = React.useState(false)
+    const [saveError, setSaveError] = React.useState('')
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
     const focus = e => e.target.style.borderColor = '#C4A882'
     const blur = e => e.target.style.borderColor = '#E8DDD0'
-    const canSubmit = values.photos.length > 0
+    const canSubmit = values.photos.length > 0 && !saving
+
+    const handlePublish = async () => {
+        if (!canSubmit) return
+        setSaving(true)
+        setSaveError('')
+        try {
+            // 1. 依序上傳所有照片取得 URL
+            const uploadedImages = []
+            for (const photo of values.photos) {
+                const res = await mediaApi.upload(photo.file)
+                const url = res.data.data?.url || res.data.url
+                if (url) uploadedImages.push({ url, is_cover: photo.id === values.coverId })
+            }
+            if (uploadedImages.length === 0) {
+                setSaveError('照片上傳失敗，請再試一次')
+                setSaving(false)
+                return
+            }
+            // 2. 建立作品
+            await postApi.createPost({
+                content: values.desc.trim(),
+                images: uploadedImages,
+            })
+            onSuccess()
+            onClose()
+        } catch (err) {
+            setSaveError(err.response?.data?.error?.message || '發布失敗，請稍後再試')
+        } finally {
+            setSaving(false)
+        }
+    }
 
     return (
         <div onClick={onClose} style={{
@@ -154,7 +188,6 @@ function AddWorkModal({ onClose }) {
 
                 {/* 表單 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
                     <div>
                         <WFieldLabel>作品描述</WFieldLabel>
                         <textarea value={values.desc} onChange={e => onChange('desc', e.target.value)}
@@ -176,23 +209,26 @@ function AddWorkModal({ onClose }) {
                             onCoverChange={v => onChange('coverId', v)}
                         />
                     </div>
-
                 </div>
+
+                {saveError && (
+                    <div style={{ fontSize: 12, color: '#E07A5F', fontFamily: 'Noto Sans TC, sans-serif', textAlign: 'center' }}>{saveError}</div>
+                )}
 
                 {/* 操作按鈕 */}
                 <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={onClose} style={{
+                    <button onClick={onClose} disabled={saving} style={{
                         flex: 1, padding: '13px 0', borderRadius: 8,
                         border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
                     }}>取消</button>
-                    <button onClick={onClose} disabled={!canSubmit} style={{
+                    <button onClick={handlePublish} disabled={!canSubmit} style={{
                         flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
                         backgroundColor: canSubmit ? '#1C1A18' : '#D4CCC4',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
                         fontWeight: 600, color: '#F2EDE6',
                         cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    }}>發布作品</button>
+                    }}>{saving ? '發布中⋯' : '發布作品'}</button>
                 </div>
                 <div style={{ fontSize: 11, color: '#B0A89A', textAlign: 'center', fontFamily: 'Noto Sans TC, sans-serif' }}>
                     發布後可隨時在個人頁面編輯或刪除
@@ -201,7 +237,6 @@ function AddWorkModal({ onClose }) {
         </div>
     )
 }
-
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -667,7 +702,7 @@ export default function Profile() {
             </div>
 
             {/* Modals */}
-            {showAddWork && <AddWorkModal onClose={() => setShowAddWork(false)} onWorkAdded={loadProfile} />}
+            {showAddWork && <AddWorkModal onClose={() => setShowAddWork(false)} onSuccess={loadProfile} />}
             {selectedWork && (
                 <PostModal
                     item={selectedWork}
