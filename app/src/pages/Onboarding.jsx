@@ -265,8 +265,9 @@ function SmsModal({ onClose, onSuccess }) {
 
 // ── Step 1: 個人資料 ──────────────────────────────────────────────────────────
 function ProfileStep({ onNext }) {
-    const { currentUser } = useAuth()
-    const [avatarPreview, setAvatarPreview] = useState(null)
+    const { currentUser, updateProfile } = useAuth()
+    const [avatarFile, setAvatarFile] = useState(null)        // 真實 File 物件
+    const [avatarPreview, setAvatarPreview] = useState(null)  // 本地預覽 URL
     const [displayName, setDisplayName] = useState(currentUser?.display_name || '')
     const [bio, setBio] = useState('')
     const [saving, setSaving] = useState(false)
@@ -275,6 +276,7 @@ function ProfileStep({ onNext }) {
     const handleFile = (e) => {
         const file = e.target.files[0]
         if (!file) return
+        setAvatarFile(file)
         const reader = new FileReader()
         reader.onload = ev => setAvatarPreview(ev.target.result)
         reader.readAsDataURL(file)
@@ -284,6 +286,16 @@ function ProfileStep({ onNext }) {
     const handleNext = async () => {
         setSaving(true)
         try {
+            // 1. 大頭照：先上傳取得 URL，再更新 avatar
+            if (avatarFile) {
+                const uploadRes = await mediaApi.upload(avatarFile)
+                const url = uploadRes.data.data?.url
+                if (url) {
+                    await userApi.updateAvatar({ avatar_url: url })
+                    updateProfile({ avatar_url: url })
+                }
+            }
+            // 2. 顯示名稱 / 簡介
             const updates = {}
             if (displayName.trim()) updates.display_name = displayName.trim()
             if (bio.trim()) updates.bio = bio.trim()
