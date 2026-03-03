@@ -11,8 +11,9 @@ import (
 
 // Config 儲存所有環境設定
 type Config struct {
-	AppEnv  string
-	AppPort string
+	AppEnv     string
+	AppPort    string
+	AppBaseURL string
 
 	// 資料庫
 	DBHost         string
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		AppEnv:               getEnv("APP_ENV", "development"),
 		AppPort:              getEnv("APP_PORT", "8080"),
+		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:8080"),
 		DBHost:               getEnv("DB_HOST", "127.0.0.1"),
 		DBPort:               getEnv("DB_PORT", "3306"),
 		DBUser:               getEnv("DB_USER", "root"),
