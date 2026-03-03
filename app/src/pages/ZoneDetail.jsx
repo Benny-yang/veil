@@ -3,48 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Clock, Users, Star, ChevronLeft, ChevronRight, ArrowLeft, CheckCircle } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import { zoneApi } from '../services/api'
+import { normalizeZone, timeLeftText, isUrgent } from '../utils/normalizers'
 
-// ── 計算距離截止的文字 ────────────────────────────────────────────────────────
-function timeLeftText(endsAt) {
-    if (!endsAt) return null
-    const diff = new Date(endsAt) - new Date()
-    if (diff <= 0) return '已截止'
-    const hours = Math.floor(diff / 3600000)
-    const days = Math.floor(hours / 24)
-    if (hours < 24) return `剩餘 ${hours} 小時`
-    return `剩餘 ${days} 天`
-}
-
-function isUrgent(endsAt) {
-    if (!endsAt) return false
-    const diff = new Date(endsAt) - new Date()
-    return diff > 0 && diff < 24 * 3600000
-}
-
-// ── 後端資料正規化 ────────────────────────────────────────────────────────────
-function normalizeZone(z) {
-    const accepted = z.accepted_count ?? 0
-    const total = z.total_slots ?? 0
-    const images = (z.photos || z.images || []).map(p => p.url || p).filter(Boolean)
-    return {
-        id: z.id,
-        title: z.title || '無標題',
-        images,
-        seller: {
-            name: z.seller?.username || '',
-            avatar: z.seller?.avatar_url || null,
-            avatarColor: z.seller?.avatar_color || '#C4A882',
-            rating: z.seller?.rating ?? null,
-        },
-        timeLeft: timeLeftText(z.ends_at),
-        timeUrgent: isUrgent(z.ends_at),
-        slots: `${accepted}/${total}`,
-        slotsLeft: total - accepted,
-        threshold: z.min_credit_score ? String(z.min_credit_score) : null,
-        description: z.description || '',
-        status: z.status,
-    }
-}
 
 // ── 申請送出成功 Modal ────────────────────────────────────────────────────────
 function SubmittedModal({ onClose, onGoMessages }) {

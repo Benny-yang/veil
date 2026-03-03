@@ -3,42 +3,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, ChevronLeft, ChevronRight, ArrowLeft, User } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import { postApi } from '../services/api'
+import { normalizeWork, normalizeComment } from '../utils/normalizers'
 
 const font = 'Noto Sans TC, sans-serif'
-
-function normalizeWork(w) {
-    const images = (w.images || []).map(img => img.url || img).filter(Boolean)
-    return {
-        id: w.id,
-        images,
-        image: images[0] || '',
-        desc: w.content || w.description || '',
-        tags: w.tags || [],
-        likes: w.like_count ?? 0,
-        comments: w.comment_count ?? 0,
-        liked: w.liked ?? false,
-        author: {
-            name: w.author?.username || '',
-            displayName: w.author?.display_name || w.author?.username || '',
-            avatar: w.author?.avatar_url || null,
-            avatarColor: w.author?.avatar_color || '#C4A882',
-        },
-    }
-}
-
-function normalizeComment(c) {
-    return {
-        id: c.id,
-        content: c.content || '',
-        author: {
-            name: c.author?.username || '',
-            avatar: c.author?.avatar_url || null,
-            avatarColor: c.author?.avatar_color || '#C4A882',
-        },
-        createdAt: c.created_at
-            ? new Date(c.created_at).toLocaleDateString('zh-TW') : '',
-    }
-}
 
 export default function WorkDetail() {
     const { id } = useParams()

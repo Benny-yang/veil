@@ -4,27 +4,8 @@ import { Heart, MessageCircle } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
 import { postApi } from '../services/api'
+import { normalizePost } from '../utils/normalizers'
 
-// ── 後端資料轉換 ───────────────────────────────────────────────────────────────
-function normalizePost(p) {
-    const images = (p.images || []).map(img => img.url || img).filter(Boolean)
-    return {
-        id: p.id,
-        author: {
-            name: p.author?.username || p.author_username || '',
-            displayName: p.author?.display_name || p.author_display_name || '',
-            avatar: p.author?.avatar_url || p.author_avatar_url || null,
-            avatarColor: '#C4A882',
-        },
-        image: images[0] || '',
-        images,
-        likes: p.like_count ?? p.likes ?? 0,
-        comments: p.comment_count ?? p.comments ?? 0,
-        liked: p.liked ?? false,
-        desc: p.content || p.description || '',
-        tags: p.tags || [],
-    }
-}
 
 // ── Post Card ─────────────────────────────────────────────────────────────────
 function PostCard({ post, onLikeToggle, onClick }) {

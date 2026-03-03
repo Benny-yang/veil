@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Clock, Users, CheckCircle, XCircle, MessageCircle } from 'lucide-react'
 import { zoneApi } from '../services/api'
+import { normalizeApp } from '../utils/normalizers'
 
 const font = 'Noto Sans TC, sans-serif'
 
@@ -108,19 +109,6 @@ function ApplicantCard({ applicant, onApprove, onReject, loading }) {
 }
 
 // ── 後端資料正規化 ────────────────────────────────────────────────────────────
-function normalizeApp(a) {
-    return {
-        id: a.id,
-        name: a.applicant?.username || a.user?.username || '',
-        avatar: a.applicant?.avatar_url || a.user?.avatar_url || null,
-        avatarColor: a.applicant?.avatar_color || '#C4A882',
-        intro: a.message || a.intro || '',
-        appliedAt: a.created_at
-            ? new Date(a.created_at).toLocaleDateString('zh-TW') : '',
-        creditScore: a.applicant?.credit_score ?? a.credit_score ?? 50,
-        status: a.status || 'pending',
-    }
-}
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function ReviewApplications() {

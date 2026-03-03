@@ -5,6 +5,7 @@ import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
 import { useAuth } from '../context/AuthContext'
 import { userApi, workApi, userExtendedApi, mediaApi, postApi } from '../services/api'
+import { buildCreatePostPayload } from '../utils/normalizers'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,11 +152,11 @@ function AddWorkModal({ onClose, onSuccess }) {
                 setSaving(false)
                 return
             }
-            // 2. 建立作品（後端欄位：description + image_urls: []string）
-            await postApi.createPost({
+            // 2. 建立作品（用 buildCreatePostPayload 確保欄位名稱與後端一致）
+            await postApi.createPost(buildCreatePostPayload({
                 description: values.desc.trim(),
-                image_urls: uploadedImages.map(img => img.url),
-            })
+                imageUrls: uploadedImages.map(img => img.url),
+            }))
             onSuccess()
             onClose()
         } catch (err) {
