@@ -4,8 +4,8 @@ import { Plus, Star, BadgeCheck, Heart, MessageCircle, Settings } from 'lucide-r
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
 import { useAuth } from '../context/AuthContext'
-import { userApi, workApi, userExtendedApi, mediaApi, postApi } from '../services/api'
-import { buildCreatePostPayload } from '../utils/normalizers'
+import { userApi, workApi, userExtendedApi, mediaApi } from '../services/api'
+import { buildCreateWorkPayload } from '../utils/normalizers'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,22 +140,23 @@ function AddWorkModal({ onClose, onSuccess }) {
         setSaving(true)
         setSaveError('')
         try {
-            // 1. 依序上傳所有照片取得 URL
+            // 1. 依序上傳所有照片取得 URL，保留 localId 供封面判斷
             const uploadedImages = []
             for (const photo of values.photos) {
                 const res = await mediaApi.upload(photo.file)
                 const url = res.data.data?.url || res.data.url
-                if (url) uploadedImages.push({ url, is_cover: photo.id === values.coverId })
+                if (url) uploadedImages.push({ url, id: photo.id })
             }
             if (uploadedImages.length === 0) {
                 setSaveError('照片上傳失敗，請再試一次')
                 setSaving(false)
                 return
             }
-            // 2. 建立作品（用 buildCreatePostPayload 確保欄位名稱與後端一致）
-            await postApi.createPost(buildCreatePostPayload({
+            // 2. 建立作品（POST /users/me/works）
+            await workApi.createWork(buildCreateWorkPayload({
                 description: values.desc.trim(),
-                imageUrls: uploadedImages.map(img => img.url),
+                photos: uploadedImages,
+                coverId: values.coverId,
             }))
             onSuccess()
             onClose()

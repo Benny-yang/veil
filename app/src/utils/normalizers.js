@@ -161,17 +161,26 @@ export function normalizeProfileWork(w) {
     }
 }
 
-// ── CreatePost API payload 組裝 ───────────────────────────────────────────────
+// ── CreateWork API payload 組裝 ──────────────────────────────────────────────
 
 /**
- * 組裝 POST /posts 的 request body
- * 對應後端 CreatePostRequest struct:
- *   Description string   `json:"description"`
- *   ImageURLs   []string `json:"image_urls" binding:"required,min=1"`
+ * 組裝 POST /users/me/works 的 request body
+ * 對應後端 CreateWorkRequest struct:
+ *   Description string       `json:"description" binding:"required"`
+ *   Photos      []PhotoInput `json:"photos" binding:"required,min=1"`
+ *     PhotoInput: { url string, sort_order int, is_cover bool }
+ *
+ * @param {string} description - 作品說明（必填，後端 required）
+ * @param {{ url: string, id: string, coverId: string }[]} photos - 已上傳的照片
+ * @param {string} coverId - 封面照片 id
  */
-export function buildCreatePostPayload({ description, imageUrls }) {
+export function buildCreateWorkPayload({ description, photos, coverId }) {
     return {
         description: description ?? '',
-        image_urls: imageUrls,
+        photos: photos.map((p, i) => ({
+            url: p.url,
+            sort_order: i,
+            is_cover: p.id === coverId || (!coverId && i === 0),
+        })),
     }
 }

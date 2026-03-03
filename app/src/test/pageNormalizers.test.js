@@ -14,7 +14,7 @@ import {
     normalizePost,
     normalizeWork,
     normalizeComment,
-    buildCreatePostPayload,
+    buildCreateWorkPayload,
 } from '../utils/normalizers'
 
 // ── 測試資料工廠（Factory functions）────────────────────────────────────────────
@@ -296,43 +296,59 @@ describe('normalizeComment', () => {
     })
 })
 
-// ── buildCreatePostPayload ────────────────────────────────────────────────────
-// 這個測試是關鍵：驗證後端 CreatePostRequest 的欄位名稱是否正確
-describe('buildCreatePostPayload', () => {
-    it('輸出欄位必須符合後端 CreatePostRequest struct', () => {
-        const payload = buildCreatePostPayload({
+// ── buildCreateWorkPayload ────────────────────────────────────────────────────
+// 關鍵 contract test：驗證後端 CreateWorkRequest struct 的欄位名稱
+describe('buildCreateWorkPayload', () => {
+    it('輸出欄位必須符合後端 CreateWorkRequest struct', () => {
+        const photos = [
+            { url: 'https://cdn.example.com/a.jpg', id: 'local-1' },
+            { url: 'https://cdn.example.com/b.jpg', id: 'local-2' },
+        ]
+        const payload = buildCreateWorkPayload({
             description: '美麗的古著',
-            imageUrls: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'],
+            photos,
+            coverId: 'local-1',
         })
 
-        // 後端 struct: Description string `json:"description"` + ImageURLs []string `json:"image_urls"`
+        // 後端 struct: Description string `binding:"required"` + Photos []PhotoInput `binding:"required,min=1"`
         expect(payload).toHaveProperty('description', '美麗的古著')
-        expect(payload).toHaveProperty('image_urls')
-        expect(payload.image_urls).toEqual([
-            'https://cdn.example.com/a.jpg',
-            'https://cdn.example.com/b.jpg',
-        ])
+        expect(payload).toHaveProperty('photos')
+        expect(Array.isArray(payload.photos)).toBe(true)
+        expect(payload.photos).toHaveLength(2)
 
-        // 確保沒有舊的錯誤欄位名稱
-        expect(payload).not.toHaveProperty('content')
+        // 封面照片正確設定
+        expect(payload.photos[0].is_cover).toBe(true)
+        expect(payload.photos[1].is_cover).toBe(false)
+
+        // sort_order 正確
+        expect(payload.photos[0].sort_order).toBe(0)
+        expect(payload.photos[1].sort_order).toBe(1)
+
+        // photos 每個有 url（字串），不是 blob/DataURL
+        expect(typeof payload.photos[0].url).toBe('string')
+
+        // 確保沒有錯誤的舊欄位名稱
+        expect(payload).not.toHaveProperty('image_urls')
         expect(payload).not.toHaveProperty('images')
-        expect(payload).not.toHaveProperty('imageUrls')
     })
 
-    it('description 為空字串時仍包含 description 欄位（非 required）', () => {
-        const payload = buildCreatePostPayload({
-            description: '',
-            imageUrls: ['https://cdn.example.com/a.jpg'],
-        })
-        expect(payload.description).toBe('')
-        expect(Array.isArray(payload.image_urls)).toBe(true)
+    it('沒有指定 coverId 時第一張自動設為封面', () => {
+        const photos = [
+            { url: 'https://cdn.example.com/a.jpg', id: 'local-1' },
+            { url: 'https://cdn.example.com/b.jpg', id: 'local-2' },
+        ]
+        const payload = buildCreateWorkPayload({ description: '測試', photos, coverId: '' })
+        expect(payload.photos[0].is_cover).toBe(true)
+        expect(payload.photos[1].is_cover).toBe(false)
     })
 
-    it('image_urls 為純字串陣列，不是物件陣列', () => {
-        const payload = buildCreatePostPayload({
-            description: '測試',
-            imageUrls: ['https://a.com/1.jpg'],
-        })
-        expect(typeof payload.image_urls[0]).toBe('string')
+    it('photos 格式中 url 為純字串，不含 File 物件', () => {
+        const photos = [{ url: 'https://cdn.example.com/a.jpg', id: 'x' }]
+        const payload = buildCreateWorkPayload({ description: '', photos, coverId: 'x' })
+        expect(Object.keys(payload.photos[0])).toEqual(
+            expect.arrayContaining(['url', 'sort_order', 'is_cover'])
+        )
+        expect(payload.photos[0]).not.toHaveProperty('file')
+        expect(payload.photos[0]).not.toHaveProperty('id')
     })
 })
