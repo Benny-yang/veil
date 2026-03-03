@@ -840,22 +840,6 @@ export default function PrivateCollection() {
                     </h1>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        {/* Main Tab Toggle */}
-                        <div style={{ display: 'flex', border: '1px solid #E8DDD0', borderRadius: 20, overflow: 'hidden' }}>
-                            {MAIN_TABS.map(t => (
-                                <button key={t.key} onClick={() => setMainTab(t.key)} style={{
-                                    padding: '8px 20px', fontSize: 13,
-                                    fontFamily: 'Noto Sans TC, sans-serif',
-                                    fontWeight: mainTab === t.key ? 600 : 400,
-                                    backgroundColor: mainTab === t.key ? '#1C1A18' : 'transparent',
-                                    color: mainTab === t.key ? '#F2EDE6' : '#8C8479',
-                                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                                }}>
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-
                         {/* New Zone Button */}
                         {isMine && (
                             <button onClick={() => setShowNewModal(true)} style={{
@@ -872,6 +856,22 @@ export default function PrivateCollection() {
                                 開設新私藏
                             </button>
                         )}
+
+                        {/* Main Tab Toggle */}
+                        <div style={{ display: 'flex', border: '1px solid #E8DDD0', borderRadius: 20, overflow: 'hidden' }}>
+                            {MAIN_TABS.map(t => (
+                                <button key={t.key} onClick={() => setMainTab(t.key)} style={{
+                                    padding: '8px 20px', fontSize: 13,
+                                    fontFamily: 'Noto Sans TC, sans-serif',
+                                    fontWeight: mainTab === t.key ? 600 : 400,
+                                    backgroundColor: mainTab === t.key ? '#1C1A18' : 'transparent',
+                                    color: mainTab === t.key ? '#F2EDE6' : '#8C8479',
+                                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                                }}>
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
