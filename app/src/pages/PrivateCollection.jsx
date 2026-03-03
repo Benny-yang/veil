@@ -290,7 +290,8 @@ function PhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
         toAdd.forEach(file => {
             const reader = new FileReader()
             reader.onload = ev => {
-                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result })
+                // 同時保留 file 物件供上傳用
+                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result, file })
                 pending--
                 if (pending === 0) {
                     const updated = [...photosRef.current, ...accumulated]
@@ -523,12 +524,17 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
         if (!values.title.trim()) return
         setSaving(true)
         try {
-            const photoInputs = values.photos.map((p, i) => ({
-                id: p.id, // Keep existing photo IDs
-                url: p.url,
-                sort_order: i,
-                is_cover: p.id === values.coverId,
-            }))
+            // 新照片（有 file 物件）先上傳取得後端 URL；既有後端 URL 的直接保留
+            const photoInputs = []
+            for (const p of values.photos) {
+                if (p.file) {
+                    const res = await mediaApi.upload(p.file)
+                    const url = res.data.data?.url || res.data.url
+                    if (url) photoInputs.push({ url, is_cover: p.id === values.coverId })
+                } else if (p.url && !p.url.startsWith('data:')) {
+                    photoInputs.push({ id: p.id, url: p.url, is_cover: p.id === values.coverId })
+                }
+            }
 
             await zoneApi.updateZone(zone.id, {
                 title: values.title,
@@ -645,14 +651,19 @@ function NewZoneModal({ onClose, onCreated }) {
         if (!values.title.trim()) return
         setSaving(true)
         try {
-            // 過濾掉尚未上傳的 base64 圖片，只收集真實 URL
-            const finalPhotos = values.photos
-                .filter(p => !p.url.startsWith('data:'))
-                .map((p, i) => ({
-                    url: p.url,
-                    sort_order: i,
-                    is_cover: p.id === values.coverId,
-                }))
+            // 1. 上傳新照片（有 file 物件的），已有後端 URL 的則保留
+            const uploadedPhotos = []
+            for (const p of values.photos) {
+                if (p.file) {
+                    // 新上傳的本地檔案
+                    const res = await mediaApi.upload(p.file)
+                    const url = res.data.data?.url || res.data.url
+                    if (url) uploadedPhotos.push({ url, is_cover: p.id === values.coverId })
+                } else if (p.url && !p.url.startsWith('data:')) {
+                    // 已經是後端 URL（編輯時）
+                    uploadedPhotos.push({ url: p.url, is_cover: p.id === values.coverId })
+                }
+            }
 
             await zoneApi.createZone({
                 title: values.title,
@@ -660,7 +671,7 @@ function NewZoneModal({ onClose, onCreated }) {
                 ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
                 total_slots: parseInt(values.slots || '1', 10),
                 min_credit_score: parseInt(values.creditMin || '0', 10),
-                photos: finalPhotos,
+                photos: uploadedPhotos,
             })
             onCreated?.()
             onClose()
