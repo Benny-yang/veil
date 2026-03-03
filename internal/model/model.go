@@ -44,7 +44,7 @@ type UserProfile struct {
 	AvatarURL      *string   `gorm:"size:512" json:"avatar_url"`
 	AvatarColor    string    `gorm:"size:7;default:'#E8DDD0'" json:"avatar_color"`
 	Phone          *string   `gorm:"size:20" json:"phone,omitempty"`
-	CreditScore    int       `gorm:"default:60" json:"credit_score"`
+	CreditScore    int       `gorm:"default:50" json:"credit_score"`
 	FollowerCount  int       `gorm:"default:0" json:"follower_count"`
 	FollowingCount int       `gorm:"default:0" json:"following_count"`
 	DealCount      int       `gorm:"default:0" json:"deal_count"`

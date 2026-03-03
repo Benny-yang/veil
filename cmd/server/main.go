@@ -220,7 +220,7 @@ func initSystemConfigs(cfg *config.Config) {
 		},
 		{
 			Key:         "credit_score_init",
-			Value:       "60",
+			Value:       "50",
 			Description: "新用戶初始信用分數",
 		},
 		{
