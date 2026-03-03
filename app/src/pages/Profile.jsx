@@ -1,78 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Plus, Star, BadgeCheck, Heart, MessageCircle, Settings } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
+import { useAuth } from '../context/AuthContext'
+import { userApi, workApi, userExtendedApi } from '../services/api'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 當前登入者（實際應從 auth context 取得）
-// ─────────────────────────────────────────────────────────────────────────────
-const CURRENT_USER_ID = 'my_account'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock 使用者資料
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_USERS = {
-    'my_account': {
-        id: 'my_account',
-        name: 'my_account',
-        displayName: 'Aria Chen',
-        verified: true,
-        avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=240&h=240&fit=crop&crop=face',
-        bio: '品味是一種語言，衣著是一種態度。分享那些曾伴我走過的美麗舊衣。\n每一件物品都有它的故事，我只是暫時的守護者。',
-        followers: 284, following: 93, dealCount: 37,
-        rating: 4.9,
-    },
-    'velvet_noir': {
-        id: 'velvet_noir',
-        name: 'velvet_noir',
-        displayName: 'Velvet Noir',
-        verified: true,
-        avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=240&h=240&fit=crop&crop=face',
-        bio: '古著愛好者，專注尋找被遺忘的優雅。\n每一件物品都有它的故事，我只是暫時的守護者。',
-        followers: 512, following: 142, dealCount: 88,
-        rating: 4.7,
-    },
-    'shimmer_style': {
-        id: 'shimmer_style',
-        name: 'shimmer_style',
-        displayName: 'shimmer_style',
-        verified: false,
-        avatar: 'https://images.unsplash.com/photo-1734669579642-a228b8feb994?w=240&h=240&fit=crop&crop=face',
-        bio: '復古愛好者 ✨ 專注收藏 50-80 年代的洋裝與飾品。\n每一件物品都有它的故事，我只是暫時的守護者。',
-        followers: 1204, following: 97, dealCount: 56,
-        rating: 4.8,
-    },
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock 作品圖片（對齊設計稿的圖片）
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_WORKS = {
-    'my_account': [
-        { id: 'p1', image: 'https://images.unsplash.com/photo-1680350024349-293ae872d5b4?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1680350024349-293ae872d5b4?w=800&fit=crop', 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&fit=crop'], desc: '這件手工真絲洋裝帶著些許週末的慵懶氣息，穿上它你就是那個房間裡最有故事的人。', tags: ['真絲', '洋裝', '二手'], likes: 24, comments: 6, mockComments: [{ user: 'velvet_noir', text: '請問是修身嗎？', time: '1小時前' }, { user: 'silk_archive', text: '顏色太美了！', time: '3小時前' }] },
-        { id: 'p2', image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&fit=crop'], desc: '經典風衣，永不過時的選擇。這一件陪了我三個秋天。', tags: ['風衣', '經典', '秋冬'], likes: 33, comments: 7, mockComments: [{ user: 'luna_closet', text: '好想要！', time: '30分鐘前' }] },
-        { id: 'p3', image: 'https://images.unsplash.com/photo-1717249882700-7b2cf84e5e70?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1717249882700-7b2cf84e5e70?w=800&fit=crop'], desc: '蕾絲邊衣領白色上衣，帶有法式浪漫的細節。', tags: ['蕾絲', '白色', '法式'], likes: 52, comments: 16, mockComments: [{ user: 'retro_rose', text: '超美！', time: '2小時前' }] },
-        { id: 'p4', image: 'https://images.unsplash.com/photo-1550614000-4b95d46660dc?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1550614000-4b95d46660dc?w=800&fit=crop'], desc: '尋找懂得欣賞丹寧落色的人，每一處磨白都是歷史。', tags: ['丹寧', 'vintage'], likes: 19, comments: 4, mockComments: [] },
-        { id: 'p5', image: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&fit=crop'], desc: '限量印花短洋裝，設計師款，穿過一次，狀態完美。', tags: ['印花', '設計師', '限量'], likes: 37, comments: 5, mockComments: [{ user: 'velvet_noir', text: '哪個設計師？', time: '6小時前' }] },
-        { id: 'p6', image: 'https://images.unsplash.com/photo-1485518994671-4ced98a5ed15?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1485518994671-4ced98a5ed15?w=800&fit=crop'], desc: '素色寬版老爹T，怎麼配都好看。', tags: ['T-shirt', '寬版'], likes: 29, comments: 6, mockComments: [{ user: 'luna_closet', text: '顏色好喜歡！', time: '1小時前' }] },
-    ],
-    'velvet_noir': [
-        { id: 'v1', image: 'https://images.unsplash.com/photo-1711113456756-40a80c23491c?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1711113456756-40a80c23491c?w=800&fit=crop'], desc: '皮質背心，穿過三季，依然如新。對的人才懂它的好。', tags: ['皮革', '背心', '秋冬'], likes: 42, comments: 11, mockComments: [{ user: 'atelier_muse', text: '請問有S號嗎？', time: '30分鐘前' }] },
-        { id: 'v2', image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&fit=crop'], desc: '整套手工刺繡上衣，只穿過兩次。', tags: ['刺繡', '手工', '限量'], likes: 88, comments: 22, mockComments: [{ user: 'velvet_noir', text: '太精緻了！', time: '30分鐘前' }] },
-        { id: 'v3', image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=800&fit=crop'], desc: '薄荷綠針織上衣，清爽百搭，穿出初夏感。', tags: ['針織', '薄荷', '夏季'], likes: 45, comments: 8, mockComments: [] },
-    ],
-    'shimmer_style': [
-        { id: 's1', image: 'https://images.unsplash.com/photo-1716957600755-e85798771681?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1716957600755-e85798771681?w=800&fit=crop'], desc: '復古洋裝，50年代風格，九成新。', tags: ['復古', '洋裝'], likes: 61, comments: 14, mockComments: [{ user: 'luna_closet', text: '好喜歡這個年代的剪裁！', time: '1小時前' }] },
-        { id: 's2', image: 'https://images.unsplash.com/photo-1740319256347-0cf3d86f7af8?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1740319256347-0cf3d86f7af8?w=800&fit=crop'], desc: '收藏多年的銀質飾品組合。', tags: ['飾品', '銀色', '收藏'], likes: 37, comments: 9, mockComments: [] },
-        { id: 's3', image: 'https://images.unsplash.com/photo-1763256614589-199db7a3bd51?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1763256614589-199db7a3bd51?w=800&fit=crop'], desc: '古著眼鏡，鏡框完整無損。', tags: ['眼鏡', '古著'], likes: 28, comments: 3, mockComments: [] },
-        { id: 's4', image: 'https://images.unsplash.com/photo-1771730896799-d008769ec54a?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1771730896799-d008769ec54a?w=800&fit=crop'], desc: '70年代印花上衣，顏色鮮豔如新。', tags: ['70s', '印花'], likes: 55, comments: 7, mockComments: [] },
-        { id: 's5', image: 'https://images.unsplash.com/photo-1645199431596-b7da6a10a01b?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1645199431596-b7da6a10a01b?w=800&fit=crop'], desc: '復古絲巾，多種配法。', tags: ['絲巾', '配件'], likes: 43, comments: 12, mockComments: [] },
-        { id: 's6', image: 'https://images.unsplash.com/photo-1722340319300-be1d71f4e6f3?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1722340319300-be1d71f4e6f3?w=800&fit=crop'], desc: '手工刺繡手提包，法國跳蚤市場淘到的。', tags: ['手提包', '刺繡', '手工'], likes: 31, comments: 5, mockComments: [] },
-        { id: 's7', image: 'https://images.unsplash.com/photo-1650779404110-314dad1f67a4?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1650779404110-314dad1f67a4?w=800&fit=crop'], desc: '陶瓷掛飾系列，每一件都是手工。', tags: ['陶瓷', '掛飾', '手工'], likes: 19, comments: 2, mockComments: [] },
-        { id: 's8', image: 'https://images.unsplash.com/photo-1627234553051-3d60e738b534?w=500&fit=crop', images: ['https://images.unsplash.com/photo-1627234553051-3d60e738b534?w=800&fit=crop'], desc: '皮革腰帶，純手工縫製，質感極好。', tags: ['皮革', '腰帶', '手工'], likes: 67, comments: 18, mockComments: [{ user: 'velvet_noir', text: '在哪裡做的？太厲害了！', time: '3小時前' }] },
-    ],
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 共用元件（比照 PrivateCollection 的 PhotoUpload / FieldLabel）
@@ -274,21 +207,9 @@ function AddWorkModal({ onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 粉絲 / 追蹤名單 Modal
 // ─────────────────────────────────────────────────────────────────────────────
-const MOCK_FOLLOWERS = [
-    { id: 'f1', name: 'velvet_noir', displayName: 'Velvet Noir', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=80&h=80&fit=crop&crop=face' },
-    { id: 'f2', name: 'retro_rose', displayName: 'Retro Rose', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=80&h=80&fit=crop&crop=face' },
-    { id: 'f3', name: 'shimmer_style', displayName: 'shimmer_style', avatar: 'https://images.unsplash.com/photo-1734669579642-a228b8feb994?w=80&h=80&fit=crop&crop=face' },
-    { id: 'f4', name: 'luna_closet', displayName: 'Luna Closet', avatar: 'https://images.unsplash.com/photo-1649919073950-7c5ef1ea5af3?w=80&h=80&fit=crop&crop=face' },
-    { id: 'f5', name: 'silk_archive', displayName: 'Silk Archive', avatar: 'https://images.unsplash.com/photo-1564506088949-5b487ca03bae?w=80&h=80&fit=crop&crop=face' },
-    { id: 'f6', name: 'atelier_muse', displayName: 'Atelier Muse', avatar: 'https://images.unsplash.com/photo-1506863530036-1efeddceb993?w=80&h=80&fit=crop&crop=face' },
-]
-const MOCK_FOLLOWING = [
-    { id: 'g1', name: 'velvet_noir', displayName: 'Velvet Noir', avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=80&h=80&fit=crop&crop=face' },
-    { id: 'g2', name: 'shimmer_style', displayName: 'shimmer_style', avatar: 'https://images.unsplash.com/photo-1734669579642-a228b8feb994?w=80&h=80&fit=crop&crop=face' },
-    { id: 'g3', name: 'luna_closet', displayName: 'Luna Closet', avatar: 'https://images.unsplash.com/photo-1649919073950-7c5ef1ea5af3?w=80&h=80&fit=crop&crop=face' },
-]
 
-function FollowListModal({ title, list, onClose }) {
+
+function FollowListModal({ title, list, loading, onClose }) {
     const navigate = useNavigate()
     return (
         <div onClick={onClose} style={{
@@ -310,10 +231,14 @@ function FollowListModal({ title, list, onClose }) {
                 <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
                 {/* List */}
                 <div style={{ overflowY: 'auto', padding: '8px 0' }}>
-                    {list.map(u => (
+                    {loading ? (
+                        <div style={{ padding: '24px 20px', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 13 }}>載入中⋯</div>
+                    ) : list.length === 0 ? (
+                        <div style={{ padding: '24px 20px', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 13 }}>目前沒有資料</div>
+                    ) : list.map(u => (
                         <div
                             key={u.id}
-                            onClick={() => { onClose(); navigate(`/profile/${u.name}`) }}
+                            onClick={() => { onClose(); navigate(`/profile/${u.username || u.name}`) }}
                             style={{
                                 display: 'flex', alignItems: 'center', gap: 12,
                                 padding: '10px 20px', transition: 'background 0.15s', cursor: 'pointer',
@@ -321,10 +246,14 @@ function FollowListModal({ title, list, onClose }) {
                             onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FAF7F4'}
                             onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                            <img src={u.avatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                            {u.avatar_url || u.avatar ? (
+                                <img src={u.avatar_url || u.avatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                            ) : (
+                                <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#E8DDD0', flexShrink: 0 }} />
+                            )}
                             <div>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{u.displayName}</div>
-                                <div style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>@{u.name}</div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{u.display_name || u.displayName || u.username || u.name}</div>
+                                <div style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>@{u.username || u.name}</div>
                             </div>
                         </div>
                     ))}
@@ -337,16 +266,12 @@ function FollowListModal({ title, list, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 評價紀錄 Modal（匿名）
 // ─────────────────────────────────────────────────────────────────────────────
-const MOCK_RATINGS = [
-    { id: 'r1', stars: 5, text: '交易非常順暢，物品狀況如描述，是個很棒的賣家！', date: '2025-11-20', type: 'seller' },
-    { id: 'r2', stars: 5, text: '包裝細心，溝通迅速，超滿意這次的交易。', date: '2025-10-14', type: 'seller' },
-    { id: 'r3', stars: 4, text: '商品與照片相符，整體交易順暢。', date: '2025-09-03', type: 'seller' },
-    { id: 'r4', stars: 5, text: '物品超美，賣家描述非常誠實，強力推薦！', date: '2025-08-28', type: 'seller' },
-    { id: 'r5', stars: 3, text: '寄送稍慢，但商品沒問題。', date: '2025-07-15', type: 'seller' },
-]
 
-function RatingsModal({ user, onClose }) {
-    const avg = (MOCK_RATINGS.reduce((s, r) => s + r.stars, 0) / MOCK_RATINGS.length).toFixed(1)
+
+function RatingsModal({ reviews, onClose }) {
+    const avg = reviews.length > 0
+        ? (reviews.reduce((s, r) => s + (r.rating ?? r.stars ?? 0), 0) / reviews.length).toFixed(1)
+        : '0.0'
     return (
         <div onClick={onClose} style={{
             position: 'fixed', inset: 0, zIndex: 3000,
@@ -374,7 +299,7 @@ function RatingsModal({ user, onClose }) {
                                     <Star key={s} size={14} color="#C4A882" fill={parseFloat(avg) >= s ? '#C4A882' : 'none'} strokeWidth={1.5} />
                                 ))}
                             </div>
-                            <div style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>{MOCK_RATINGS.length} 則評價</div>
+                            <div style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>{reviews.length} 則評價</div>
                         </div>
                         <div style={{ marginLeft: 8, fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.6 }}>
                             所有評價均為匿名，<br />以保護買賣雙方隱私。
@@ -384,16 +309,17 @@ function RatingsModal({ user, onClose }) {
                 <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
                 {/* 評價列表 */}
                 <div style={{ overflowY: 'auto', padding: '8px 0' }}>
-                    {MOCK_RATINGS.map(r => (
+                    {reviews.map(r => (
                         <div key={r.id} style={{ padding: '16px 20px', borderBottom: '1px solid #F5F1EC' }}>
-                            {/* 星星 + 日期 */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                 <div style={{ display: 'flex', gap: 3 }}>
                                     {[1, 2, 3, 4, 5].map(s => (
-                                        <Star key={s} size={13} color="#C4A882" fill={r.stars >= s ? '#C4A882' : 'none'} strokeWidth={1.5} />
+                                        <Star key={s} size={13} color="#C4A882" fill={(r.rating ?? r.stars ?? 0) >= s ? '#C4A882' : 'none'} strokeWidth={1.5} />
                                     ))}
                                 </div>
-                                <span style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>{r.date}</span>
+                                <span style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                                    {r.created_at ? new Date(r.created_at).toLocaleDateString('zh-TW') : r.date}
+                                </span>
                             </div>
                             {/* 匿名評語 */}
                             <p style={{ margin: 0, fontSize: 13, color: '#3A3531', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.7 }}>
@@ -447,21 +373,142 @@ function WorkCell({ work, onClick }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Profile Page
 // ─────────────────────────────────────────────────────────────────────────────
-export default function Profile() {
-    const { userId } = useParams()
-    const targetId = userId || CURRENT_USER_ID
-    const isOwner = targetId === CURRENT_USER_ID
 
-    const user = MOCK_USERS[targetId] || MOCK_USERS['shimmer_style']
-    const works = MOCK_WORKS[targetId] || []
+// 後端 Work 轉換
+function normalizeWork(w) {
+    const images = (w.images || []).map(img => img.url || img).filter(Boolean)
+    return {
+        id: w.id,
+        image: images[0] || '',
+        images,
+        desc: w.description || '',
+        tags: w.tags || [],
+        likes: w.like_count ?? 0,
+        comments: w.comment_count ?? 0,
+    }
+}
+
+export default function Profile() {
+    const { userId: username } = useParams()
+    const { currentUser } = useAuth()
+    const isOwner = currentUser?.username === username || (!username && !!currentUser)
+    const targetUsername = username || currentUser?.username
+
+    const [profileData, setProfileData] = useState(null)
+    const [works, setWorks] = useState([])
+    const [loadingProfile, setLoadingProfile] = useState(true)
+    const [profileError, setProfileError] = useState('')
 
     const [followed, setFollowed] = useState(false)
+    const [followLoading, setFollowLoading] = useState(false)
     const [showAddWork, setShowAddWork] = useState(false)
     const [selectedWork, setSelectedWork] = useState(null)
     const [showFollowers, setShowFollowers] = useState(false)
     const [showFollowing, setShowFollowing] = useState(false)
     const [showRatings, setShowRatings] = useState(false)
+    const [followersList, setFollowersList] = useState([])
+    const [followingList, setFollowingList] = useState([])
+    const [loadingFollowers, setLoadingFollowers] = useState(false)
+    const [loadingFollowing, setLoadingFollowing] = useState(false)
+    const [reviews, setReviews] = useState([])
     const isMobile = useIsMobile()
+
+    const loadProfile = useCallback(async () => {
+        if (!targetUsername) return
+        setLoadingProfile(true)
+        setProfileError('')
+        try {
+            const [profileRes, worksRes] = await Promise.all([
+                userApi.getProfile(targetUsername),
+                workApi.getWorks(targetUsername),
+            ])
+            const p = profileRes.data.data || profileRes.data
+            setProfileData(p)
+            setFollowed(p.is_following ?? false)
+            const ws = worksRes.data.data || []
+            setWorks(ws.map(normalizeWork))
+        } catch {
+            setProfileError('載入失敗，請稍後再試')
+        } finally {
+            setLoadingProfile(false)
+        }
+    }, [targetUsername])
+
+    useEffect(() => { loadProfile() }, [loadProfile])
+
+    const handleFollowToggle = async () => {
+        if (followLoading) return
+        setFollowLoading(true)
+        const wasFollowed = followed
+        setFollowed(!wasFollowed)
+        try {
+            if (wasFollowed) { await userApi.unfollow(targetUsername) }
+            else { await userApi.follow(targetUsername) }
+            // 刷新最新 follower count
+            const res = await userApi.getProfile(targetUsername)
+            setProfileData(res.data.data || res.data)
+        } catch {
+            setFollowed(wasFollowed) // rollback
+        } finally {
+            setFollowLoading(false)
+        }
+    }
+
+    const openFollowers = async () => {
+        setShowFollowers(true)
+        setLoadingFollowers(true)
+        try {
+            const res = await userExtendedApi.getFollowers(targetUsername)
+            setFollowersList(res.data.data || [])
+        } catch { setFollowersList([]) }
+        finally { setLoadingFollowers(false) }
+    }
+
+    const openFollowing = async () => {
+        setShowFollowing(true)
+        setLoadingFollowing(true)
+        try {
+            const res = await userExtendedApi.getFollowing(targetUsername)
+            setFollowingList(res.data.data || [])
+        } catch { setFollowingList([]) }
+        finally { setLoadingFollowing(false) }
+    }
+
+    const openRatings = async () => {
+        setShowRatings(true)
+        try {
+            const res = await userExtendedApi.getReviews(targetUsername)
+            setReviews(res.data.data || [])
+        } catch { setReviews([]) }
+    }
+
+    if (loadingProfile) {
+        return (
+            <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#F2EDE6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>載入中⋯</div>
+            </div>
+        )
+    }
+
+    if (profileError || !profileData) {
+        return (
+            <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#F2EDE6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ color: '#E07A5F', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>{profileError || '找不到此用戶'}</div>
+            </div>
+        )
+    }
+
+    const user = {
+        name: profileData.username,
+        displayName: profileData.display_name || profileData.username,
+        avatar: profileData.avatar_url || null,
+        bio: profileData.bio || '',
+        verified: profileData.is_verified ?? false,
+        followers: profileData.followers_count ?? 0,
+        following: profileData.following_count ?? 0,
+        rating: profileData.avg_rating ?? null,
+        ratingCount: profileData.rating_count ?? 0,
+    }
 
     return (
         <div style={{ minHeight: 'calc(100vh - 60px)', backgroundColor: '#F2EDE6' }}>
@@ -508,7 +555,6 @@ export default function Profile() {
                                             <Plus size={13} strokeWidth={2.5} />
                                             新增作品
                                         </button>
-                                        {/* 設定齒輪按鈕 */}
                                         <Link to="/settings" title="設定" style={{
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                                             width: 32, height: 32, borderRadius: 6,
@@ -524,14 +570,14 @@ export default function Profile() {
                                     </div>
                                 ) : (
                                     <>
-                                        <button onClick={() => setFollowed(f => !f)} style={{
+                                        <button onClick={handleFollowToggle} disabled={followLoading} style={{
                                             display: 'flex', alignItems: 'center', gap: 6,
                                             padding: '7px 18px', borderRadius: 6,
                                             border: followed ? '1.5px solid #C4A882' : 'none',
                                             backgroundColor: followed ? 'transparent' : '#1C1A18',
                                             color: followed ? '#C4A882' : '#F2EDE6',
                                             fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
-                                            cursor: 'pointer', transition: 'all 0.15s',
+                                            cursor: followLoading ? 'not-allowed' : 'pointer', transition: 'all 0.15s',
                                         }}>
                                             {followed ? '已追蹤' : '追蹤'}
                                         </button>
@@ -552,8 +598,8 @@ export default function Profile() {
                         {/* 統計數字行 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 28 : 24, justifyContent: isMobile ? 'center' : 'flex-start' }}>
                             {[
-                                { label: '粉絲', value: user.followers.toLocaleString(), onClick: () => setShowFollowers(true) },
-                                { label: '追蹤', value: user.following, onClick: () => setShowFollowing(true) },
+                                { label: '粉絲', value: user.followers.toLocaleString(), onClick: openFollowers },
+                                { label: '追蹤', value: user.following, onClick: openFollowing },
                             ].map(({ label, value, onClick }) => (
                                 <button key={label} onClick={onClick} style={{
                                     display: 'flex', gap: 6, alignItems: 'baseline',
@@ -563,14 +609,16 @@ export default function Profile() {
                                     <span style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>{label}</span>
                                 </button>
                             ))}
-                            <button onClick={() => setShowRatings(true)} style={{
-                                display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8,
-                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                            }}>
-                                <Star size={13} color="#C4A882" fill="#C4A882" strokeWidth={0} />
-                                <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{user.rating}</span>
-                                <span style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>評價</span>
-                            </button>
+                            {user.rating != null && (
+                                <button onClick={openRatings} style={{
+                                    display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8,
+                                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                }}>
+                                    <Star size={13} color="#C4A882" fill="#C4A882" strokeWidth={0} />
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{Number(user.rating).toFixed(1)}</span>
+                                    <span style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>評價</span>
+                                </button>
+                            )}
                         </div>
 
                         {/* Bio */}
@@ -609,7 +657,7 @@ export default function Profile() {
             </div>
 
             {/* Modals */}
-            {showAddWork && <AddWorkModal onClose={() => setShowAddWork(false)} />}
+            {showAddWork && <AddWorkModal onClose={() => setShowAddWork(false)} onWorkAdded={loadProfile} />}
             {selectedWork && (
                 <PostModal
                     item={selectedWork}
@@ -618,9 +666,9 @@ export default function Profile() {
                     zIndex={2000}
                 />
             )}
-            {showFollowers && <FollowListModal title={`粉絲（${user.followers}）`} list={MOCK_FOLLOWERS} onClose={() => setShowFollowers(false)} />}
-            {showFollowing && <FollowListModal title={`追蹤中（${user.following}）`} list={MOCK_FOLLOWING} onClose={() => setShowFollowing(false)} />}
-            {showRatings && <RatingsModal user={user} onClose={() => setShowRatings(false)} />}
+            {showFollowers && <FollowListModal title={`粉絲（${user.followers}）`} list={followersList} loading={loadingFollowers} onClose={() => setShowFollowers(false)} />}
+            {showFollowing && <FollowListModal title={`追蹤中（${user.following}）`} list={followingList} loading={loadingFollowing} onClose={() => setShowFollowing(false)} />}
+            {showRatings && <RatingsModal reviews={reviews} onClose={() => setShowRatings(false)} />}
         </div>
     )
 }

@@ -167,7 +167,7 @@ function WelcomePopup({ onLogin, onRegister, onGuest }) {
 
 
 // ── Step: Login Form ─────────────────────────────────────────────────────────
-function LoginForm({ onBack, onSuccess }) {
+function LoginForm({ onBack, onSuccess, hint = '' }) {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [showPwd, setShowPwd] = useState(false)
@@ -185,7 +185,7 @@ function LoginForm({ onBack, onSuccess }) {
             login({ accessToken: access_token, refreshToken: refresh_token }, user)
             onSuccess(user)
         } catch (err) {
-            const msg = err.response?.data?.message || '登入失敗，請檢查信箱與密碼'
+            const msg = err.response?.data?.error?.message || '登入失敗，請檢查信箱與密碼'
             setError(msg)
         } finally {
             setLoading(false)
@@ -218,6 +218,8 @@ function LoginForm({ onBack, onSuccess }) {
             <div style={{ alignSelf: 'flex-end' }}>
                 <span style={{ fontSize: 12, color: '#C4A882', fontFamily: font, cursor: 'pointer' }}>忘記密碼？</span>
             </div>
+
+
 
             {/* Error */}
             {error && <div style={{ fontSize: 12, color: '#E07A5F', fontFamily: font, alignSelf: 'flex-start' }}>{error}</div>}
@@ -257,12 +259,10 @@ function RegisterForm({ onBack, onSuccess }) {
         setLoading(true)
         setError('')
         try {
-            const res = await authApi.register({ email, username, display_name: displayName, password })
-            const { access_token, refresh_token, user } = res.data.data
-            login({ accessToken: access_token, refreshToken: refresh_token }, user)
-            onSuccess(user)
+            await authApi.register({ email, username, display_name: displayName, password })
+            onSuccess()
         } catch (err) {
-            const msg = err.response?.data?.message || '註冊失敗，請稍後再試'
+            const msg = err.response?.data?.error?.message || '註冊失敗，請稍後再試'
             setError(msg)
         } finally {
             setLoading(false)
@@ -346,14 +346,21 @@ function EmailSentView({ email, onResend, onBackToLogin }) {
 export default function Auth() {
     const navigate = useNavigate()
     const [step, setStep] = useState('welcome') // welcome | login | register
+    const [registerHint, setRegisterHint] = useState('')
 
-    /** 登入/註冊成功後：根據 onboarding_completed 決定導頁 */
+    /** 登入成功後：根據 onboarding_completed 決定導頁 */
     const handleAuthSuccess = (user) => {
         if (user?.onboarding_completed) {
             navigate('/home')
         } else {
             navigate('/onboarding')
         }
+    }
+
+    /** 註冊成功後：切回登入頁並顯示提示 */
+    const handleRegisterSuccess = () => {
+        setRegisterHint('帳號建立成功！請直接登入')
+        setStep('login')
     }
 
     const handleGuest = () => navigate('/home')
@@ -367,8 +374,8 @@ export default function Auth() {
             <div style={overlayStyle}>
                 {step === 'welcome' && (
                     <WelcomePopup
-                        onLogin={() => setStep('login')}
-                        onRegister={() => setStep('register')}
+                        onLogin={() => { setRegisterHint(''); setStep('login') }}
+                        onRegister={() => { setRegisterHint(''); setStep('register') }}
                         onGuest={handleGuest}
                     />
                 )}
@@ -376,12 +383,13 @@ export default function Auth() {
                     <LoginForm
                         onBack={() => setStep('welcome')}
                         onSuccess={handleAuthSuccess}
+                        hint={registerHint}
                     />
                 )}
                 {step === 'register' && (
                     <RegisterForm
                         onBack={() => setStep('welcome')}
-                        onSuccess={handleAuthSuccess}
+                        onSuccess={handleRegisterSuccess}
                     />
                 )}
             </div>

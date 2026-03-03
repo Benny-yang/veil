@@ -1,16 +1,8 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import useIsMobile from '../hooks/useIsMobile'
 import { Camera, CheckCircle2, X, Upload, Phone, Eye, EyeOff } from 'lucide-react'
+import { userApi, verificationApi, mediaApi } from '../services/api'
 
-const INITIAL_PROFILE = {
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=240&h=240&fit=crop&crop=face',
-    username: 'my_account',
-    displayName: 'Aria Chen',
-    bio: '品味是一種語言，衣著是一種態度。分享那些曾伴我走過的美麗舊衣。\n每一件物品都有它的故事，我只是暫時的守護者。',
-    realPersonVerified: false,
-    smsVerified: false,
-    phone: '',   // 存在 profile 但透過 SMS 驗證流程綁定
-}
 
 const BIO_MAX = 200
 
@@ -322,7 +314,7 @@ const SIDEBAR_ITEMS = [
 ]
 
 // ── 帳號管理 Section ──────────────────────────────────────────────────────────
-function AccountSection() {
+function AccountSection({ email, username }) {
     const [showCurrent, setShowCurrent] = useState(false)
     const [showNew, setShowNew] = useState(false)
     const [showConfirm, setShowConfirm] = useState(false)
@@ -331,6 +323,7 @@ function AccountSection() {
     const [confirmPw, setConfirmPw] = useState('')
     const [saved, setSaved] = useState(false)
     const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
 
     const inputStyle = {
         width: '100%', border: '1.5px solid #E8DDD0', borderRadius: 8,
@@ -353,14 +346,22 @@ function AccountSection() {
         </button>
     )
 
-    const handleSave = () => {
+    const handleSave = async () => {
         setError('')
         if (!currentPw) { setError('請輸入目前密碼'); return }
         if (newPw.length < 8) { setError('新密碼至少 8 個字元'); return }
         if (newPw !== confirmPw) { setError('兩次輸入的密碼不一致'); return }
-        setSaved(true)
-        setCurrentPw(''); setNewPw(''); setConfirmPw('')
-        setTimeout(() => setSaved(false), 2500)
+        setSaving(true)
+        try {
+            await userApi.changePassword({ current_password: currentPw, new_password: newPw })
+            setSaved(true)
+            setCurrentPw(''); setNewPw(''); setConfirmPw('')
+            setTimeout(() => setSaved(false), 2500)
+        } catch (err) {
+            setError(err.response?.data?.error?.message || '密碼更新失敗，請確認目前密碼是否正確')
+        } finally {
+            setSaving(false)
+        }
     }
 
     return (
@@ -374,10 +375,10 @@ function AccountSection() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <span style={{ fontSize: 14, fontWeight: 500, color: '#1C1A18', fontFamily: font }}>登入資訊</span>
                 <FieldRow label="登入信箱">
-                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>my_account@veil.tw</span>
+                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>{email || '—'}</span>
                 </FieldRow>
                 <FieldRow label="帳號名稱">
-                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>my_account</span>
+                    <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default', fontSize: 14 }}>{username || '—'}</span>
                 </FieldRow>
             </div>
 
@@ -444,11 +445,12 @@ function AccountSection() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
                     <button
                         onClick={handleSave}
-                        style={{ padding: '12px 40px', borderRadius: 8, border: 'none', backgroundColor: '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: 'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.opacity = '.85'}
+                        disabled={saving}
+                        style={{ padding: '12px 40px', borderRadius: 8, border: 'none', backgroundColor: saving ? '#D4CCC4' : '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: saving ? 'not-allowed' : 'pointer' }}
+                        onMouseEnter={e => { if (!saving) e.currentTarget.style.opacity = '.85' }}
                         onMouseLeave={e => e.currentTarget.style.opacity = '1'}
                     >
-                        更新密碼
+                        {saving ? '更新中⋯' : '更新密碼'}
                     </button>
                     {saved && (
                         <span style={{ fontSize: 13, color: '#4CAF50', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -506,29 +508,75 @@ function PrivacySection() {
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Settings() {
     const [activeKey, setActiveKey] = useState('profile')
-    const [profile, setProfile] = useState(INITIAL_PROFILE)
-    const [avatarPreview, setAvatarPreview] = useState(null)
+    // 後端資料
+    const [meData, setMeData] = useState(null)  // { id, email, onboarding_completed, profile }
+    const [loading, setLoading] = useState(true)
+    // 表單編輯暫存
+    const [displayName, setDisplayName] = useState('')
+    const [bio, setBio] = useState('')
+    const [avatarPreview, setAvatarPreview] = useState(null)  // base64 preview
+    const [avatarUploading, setAvatarUploading] = useState(false)
+    const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
+    const [saveError, setSaveError] = useState('')
     const [showRealModal, setShowRealModal] = useState(false)
     const [showSmsModal, setShowSmsModal] = useState(false)
     // 真人驗證狀態: 'none' | 'pending' | 'verified' | 'failed'
     const [realPersonStatus, setRealPersonStatus] = useState('none')
     const [realPersonFailureReason, setRealPersonFailureReason] = useState('')
-    const [showFailureDetail, setShowFailureDetail] = useState(false)
     const avatarRef = useRef()
 
-    const set = (k, v) => setProfile(prev => ({ ...prev, [k]: v }))
+    // ── 載入 me 資料 ─────────────────────────────────────────────────────────
+    const loadMe = useCallback(async () => {
+        try {
+            const res = await userApi.getMe()
+            const d = res.data.data
+            setMeData(d)
+            setDisplayName(d.profile?.display_name || '')
+            setBio(d.profile?.bio || '')
+        } catch { /* 保持舊資料 */ }
+        finally { setLoading(false) }
+    }, [])
 
-    const handleAvatarFile = (e) => {
+    useEffect(() => { loadMe() }, [loadMe])
+
+    // ── 頭像 ─────────────────────────────────────────────────────────────────
+    const handleAvatarFile = async (e) => {
         const file = e.target.files[0]
         if (!file) return
+        // 本地預覽
         const reader = new FileReader()
         reader.onload = ev => setAvatarPreview(ev.target.result)
         reader.readAsDataURL(file)
         e.target.value = ''
+        // 上傳後端
+        setAvatarUploading(true)
+        try {
+            const res = await mediaApi.upload(file)
+            const url = res.data.data?.url
+            if (url) {
+                await userApi.updateAvatar({ avatar_url: url }).catch(() => { })
+                // 重新載入 me 更新頭像
+                loadMe()
+            }
+        } catch { /* 預覽仍保留 */ }
+        finally { setAvatarUploading(false) }
     }
 
-    const handleSave = () => { setSaved(true); setTimeout(() => setSaved(false), 2200) }
+    // ── 儲存個人資料 ──────────────────────────────────────────────────────────
+    const handleSave = async () => {
+        setSaveError('')
+        setSaving(true)
+        try {
+            await userApi.updateMe({ display_name: displayName, bio })
+            setSaved(true)
+            setTimeout(() => setSaved(false), 2200)
+        } catch (err) {
+            setSaveError(err.response?.data?.error?.message || '儲存失敗，請稍後再試')
+        } finally {
+            setSaving(false)
+        }
+    }
     // Mock: 提交後與後端同步審核結果，這裡用亂數模擬
     const MOCK_FAILURE_REASONS = [
         '自拍照片中的手寫文字不清晰，無法辨識帳號或日期',
@@ -632,7 +680,13 @@ export default function Settings() {
                             {/* 大頭貼 */}
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                                 <div onClick={() => avatarRef.current?.click()} style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', cursor: 'pointer', position: 'relative', border: '2px solid #E8DDD0' }}>
-                                    <img src={avatarPreview || profile.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    {(avatarPreview || meData?.profile?.avatar_url) ? (
+                                        <img src={avatarPreview || meData.profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                                    ) : (
+                                        <div style={{ width: '100%', height: '100%', backgroundColor: '#E8DDD0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Camera size={24} color="#8C8479" strokeWidth={1.5} />
+                                        </div>
+                                    )}
                                     <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(28,26,24,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s' }}
                                         onMouseEnter={e => e.currentTarget.style.opacity = 1}
                                         onMouseLeave={e => e.currentTarget.style.opacity = 0}>
@@ -697,16 +751,9 @@ export default function Settings() {
                                 {/* 簡訊驗證 */}
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <span style={{ fontSize: 14, color: '#1C1A18', fontFamily: font }}>簡訊驗證</span>
-                                    {profile.smsVerified ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#E8F5E9', padding: '4px 10px', borderRadius: 10 }}>
-                                            <CheckCircle2 size={12} color="#4CAF50" strokeWidth={2} />
-                                            <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, fontFamily: font }}>已驗證（{profile.phone}）</span>
-                                        </div>
-                                    ) : (
-                                        <button onClick={() => setShowSmsModal(true)} style={{ backgroundColor: '#F8F4EE', padding: '4px 10px', borderRadius: 10, border: '1px solid #E8DDD0', cursor: 'pointer' }}>
-                                            <span style={{ fontSize: 11, color: '#8C8479', fontWeight: 500, fontFamily: font }}>未驗證．點此驗證</span>
-                                        </button>
-                                    )}
+                                    <button onClick={() => setShowSmsModal(true)} style={{ backgroundColor: '#F8F4EE', padding: '4px 10px', borderRadius: 10, border: '1px solid #E8DDD0', cursor: 'pointer' }}>
+                                        <span style={{ fontSize: 11, color: '#8C8479', fontWeight: 500, fontFamily: font }}>未驗證．點此驗證</span>
+                                    </button>
                                 </div>
 
                                 <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
@@ -714,42 +761,46 @@ export default function Settings() {
 
                             {/* 帳號名稱（唯讀） */}
                             <FieldRow label="帳號名稱">
-                                <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default' }}>{profile.username}</span>
+                                <span style={{ ...baseInputStyle, color: '#8C8479', cursor: 'default' }}>{meData?.profile?.username || '—'}</span>
                             </FieldRow>
 
                             {/* 顯示名稱 */}
                             <FieldRow label="顯示名稱">
-                                <input value={profile.displayName} onChange={e => set('displayName', e.target.value)} style={baseInputStyle} placeholder="你的顯示名稱" />
+                                <input value={displayName} onChange={e => setDisplayName(e.target.value)} style={baseInputStyle} placeholder="你的顯示名稱" />
                             </FieldRow>
 
                             {/* 簡介 */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <span style={{ fontSize: 13, color: '#5C5650', fontFamily: font }}>簡介</span>
                                 <div style={{ backgroundColor: '#F8F4EE', borderRadius: 8, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 120, border: '1.5px solid #E8DDD0' }}>
-                                    <textarea value={profile.bio} onChange={e => { if (e.target.value.length <= BIO_MAX) set('bio', e.target.value) }} rows={4}
+                                    <textarea value={bio} onChange={e => { if (e.target.value.length <= BIO_MAX) setBio(e.target.value) }} rows={4}
                                         style={{ width: '100%', border: 'none', outline: 'none', resize: 'none', fontSize: 14, fontFamily: font, color: '#1C1A18', backgroundColor: 'transparent', lineHeight: 1.6, boxSizing: 'border-box' }}
                                         placeholder="介紹一下自己..." />
-                                    <div style={{ textAlign: 'right', fontSize: 12, color: '#C4A882', fontFamily: font }}>{profile.bio.length} / {BIO_MAX}</div>
+                                    <div style={{ textAlign: 'right', fontSize: 12, color: '#C4A882', fontFamily: font }}>{bio.length} / {BIO_MAX}</div>
                                 </div>
                             </div>
 
                             {/* 儲存 */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                <button onClick={handleSave} style={{ padding: '13px 48px', borderRadius: 8, border: 'none', backgroundColor: '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: 'pointer' }}
-                                    onMouseEnter={e => e.currentTarget.style.opacity = '.85'}
+                                <button onClick={handleSave} disabled={saving}
+                                    style={{ padding: '13px 48px', borderRadius: 8, border: 'none', backgroundColor: saving ? '#D4CCC4' : '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: saving ? 'not-allowed' : 'pointer' }}
+                                    onMouseEnter={e => { if (!saving) e.currentTarget.style.opacity = '.85' }}
                                     onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-                                    儲存變更
+                                    {saving ? '儲存中⋯' : '儲存變更'}
                                 </button>
                                 {saved && (
                                     <span style={{ fontSize: 13, color: '#4CAF50', fontFamily: font, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                         <CheckCircle2 size={14} strokeWidth={2} />已儲存
                                     </span>
                                 )}
+                                {saveError && (
+                                    <span style={{ fontSize: 13, color: '#E07A5F', fontFamily: font }}>{saveError}</span>
+                                )}
                             </div>
                         </div>
                     )}
 
-                    {activeKey === 'account' && <AccountSection />}
+                    {activeKey === 'account' && <AccountSection email={meData?.email} username={meData?.profile?.username} />}
                     {activeKey === 'verify' && <PlaceholderSection title="實名驗證" desc="實名驗證功能即將推出" />}
                     {activeKey === 'terms' && <TermsSection />}
                     {activeKey === 'privacy' && <PrivacySection />}

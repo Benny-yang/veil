@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCircle2, Upload, X } from 'lucide-react'
+import { CheckCircle2, Upload, X, Clock } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { userApi, verificationApi, mediaApi } from '../services/api'
 
 const font = 'Noto Sans TC, sans-serif'
 const logoFont = 'Cormorant Garamond, serif'
@@ -56,25 +58,49 @@ function Overlay({ onClose, children }) {
 function RealPersonModal({ onClose, onSuccess }) {
     const [platform, setPlatform] = useState('')
     const [profileUrl, setProfileUrl] = useState('')
-    const [photo, setPhoto] = useState(null)
+    const [photoFile, setPhotoFile] = useState(null)   // 真實 File 物件
+    const [photoPreview, setPhotoPreview] = useState(null) // 預覽 DataURL
     const [submitted, setSubmitted] = useState(false)
+    const [errorMsg, setErrorMsg] = useState('')
     const fileRef = useRef()
 
     const today = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
     const handleFile = (e) => {
         const file = e.target.files[0]
         if (!file) return
+        setPhotoFile(file)
         const reader = new FileReader()
-        reader.onload = ev => setPhoto(ev.target.result)
+        reader.onload = ev => setPhotoPreview(ev.target.result)
         reader.readAsDataURL(file)
         e.target.value = ''
     }
 
-    const canSubmit = platform.trim() && profileUrl.trim() && photo
-    const handleSubmit = () => {
+    const canSubmit = platform.trim() && profileUrl.trim() && photoFile
+    const handleSubmit = async () => {
         if (!canSubmit) return
+        // 前端先驗證 URL 格式
+        try { new URL(profileUrl.trim()) } catch {
+            setErrorMsg('社群個人頁連結需為完整網址（例如 https://instagram.com/name）')
+            return
+        }
         setSubmitted(true)
-        setTimeout(() => { onSuccess(); onClose() }, 1800)
+        setErrorMsg('')
+        try {
+            // 1. 先上傳圖片取得真實 URL
+            const uploadRes = await mediaApi.upload(photoFile)
+            const photoUrl = uploadRes.data.data?.url || uploadRes.data.url
+            // 2. 提交驗證
+            await verificationApi.submitRealPerson({
+                platform: platform.trim(),
+                profile_url: profileUrl.trim(),
+                photo_url: photoUrl,
+            })
+            setTimeout(() => { onSuccess('pending'); onClose() }, 800)
+        } catch (err) {
+            const msg = err.response?.data?.error?.message || '提交失敗，請檢查欄位後重試'
+            setErrorMsg(msg)
+            setSubmitted(false)
+        }
     }
 
     const labelStyle = { fontSize: 13, color: '#5C5650', fontFamily: font, marginBottom: 6, display: 'block' }
@@ -133,10 +159,10 @@ function RealPersonModal({ onClose, onSuccess }) {
             <div style={{ marginBottom: 28 }}>
                 <label style={labelStyle}>上傳自拍驗證照</label>
                 <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
-                {photo ? (
+                {photoPreview ? (
                     <div style={{ position: 'relative', width: '100%' }}>
-                        <img src={photo} alt="preview" style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 8, border: '1.5px solid #E8DDD0' }} />
-                        <button onClick={() => setPhoto(null)} style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <img src={photoPreview} alt="preview" style={{ width: '100%', height: 160, objectFit: 'cover', borderRadius: 8, border: '1.5px solid #E8DDD0' }} />
+                        <button onClick={() => { setPhotoFile(null); setPhotoPreview(null) }} style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <X size={14} color="#FFFFFF" />
                         </button>
                     </div>
@@ -149,13 +175,20 @@ function RealPersonModal({ onClose, onSuccess }) {
             </div>
 
             {submitted ? (
-                <div style={{ textAlign: 'center', color: '#4CAF50', fontSize: 14, fontFamily: font, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                    <CheckCircle2 size={16} strokeWidth={2} /> 提交成功，審核中⋯
+                <div style={{ textAlign: 'center', color: '#C4A882', fontSize: 14, fontFamily: font, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Clock size={16} strokeWidth={2} /> 上傳圖片中⋯
                 </div>
             ) : (
-                <button onClick={handleSubmit} disabled={!canSubmit} style={{ width: '100%', padding: '14px', borderRadius: 8, border: 'none', backgroundColor: canSubmit ? '#1C1A18' : '#E8DDD0', color: canSubmit ? '#F2EDE6' : '#B0A89A', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: canSubmit ? 'pointer' : 'not-allowed', transition: 'background-color 0.15s' }}>
-                    提交驗證
-                </button>
+                <>
+                    {errorMsg && (
+                        <div style={{ fontSize: 12, color: '#E07A5F', fontFamily: font, textAlign: 'center', marginBottom: 8 }}>
+                            {errorMsg}
+                        </div>
+                    )}
+                    <button onClick={handleSubmit} disabled={!canSubmit} style={{ width: '100%', padding: '14px', borderRadius: 8, border: 'none', backgroundColor: canSubmit ? '#1C1A18' : '#E8DDD0', color: canSubmit ? '#F2EDE6' : '#B0A89A', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: canSubmit ? 'pointer' : 'not-allowed', transition: 'background-color 0.15s' }}>
+                        提交驗證
+                    </button>
+                </>
             )}
         </Overlay>
     )
@@ -232,9 +265,11 @@ function SmsModal({ onClose, onSuccess }) {
 
 // ── Step 1: 個人資料 ──────────────────────────────────────────────────────────
 function ProfileStep({ onNext }) {
+    const { currentUser } = useAuth()
     const [avatarPreview, setAvatarPreview] = useState(null)
-    const [displayName, setDisplayName] = useState('')
+    const [displayName, setDisplayName] = useState(currentUser?.display_name || '')
     const [bio, setBio] = useState('')
+    const [saving, setSaving] = useState(false)
     const avatarRef = useRef()
 
     const handleFile = (e) => {
@@ -244,6 +279,23 @@ function ProfileStep({ onNext }) {
         reader.onload = ev => setAvatarPreview(ev.target.result)
         reader.readAsDataURL(file)
         e.target.value = ''
+    }
+
+    const handleNext = async () => {
+        setSaving(true)
+        try {
+            const updates = {}
+            if (displayName.trim()) updates.display_name = displayName.trim()
+            if (bio.trim()) updates.bio = bio.trim()
+            if (Object.keys(updates).length > 0) {
+                await userApi.updateMe(updates)
+            }
+        } catch {
+            // 儲存失敗不阻斷流程，用戶之後可在設定補填
+        } finally {
+            setSaving(false)
+            onNext()
+        }
     }
 
     const inputStyle = { width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', padding: '4px 0 8px', fontSize: 15, fontFamily: font, color: '#1C1A18', backgroundColor: 'transparent' }
@@ -259,7 +311,7 @@ function ProfileStep({ onNext }) {
                 <div style={{ fontSize: 13, color: '#8C8479', fontFamily: font, textAlign: 'center', lineHeight: 1.7 }}>讓其他人更認識你，完善資料有助於建立交易信任</div>
             </div>
 
-            {/* Avatar - 純圓圈，無 icon */}
+            {/* Avatar */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <div onClick={() => avatarRef.current?.click()} style={{ width: 96, height: 96, borderRadius: '50%', backgroundColor: '#E8DDD0', border: '2px solid #D6CFC6', cursor: 'pointer', overflow: 'hidden', position: 'relative' }}>
                     {avatarPreview && <img src={avatarPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
@@ -286,8 +338,10 @@ function ProfileStep({ onNext }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', paddingTop: 8 }}>
-                <button onClick={onNext} style={{ width: '100%', padding: '14px', borderRadius: 24, border: 'none', backgroundColor: '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: 'pointer' }}>下一步</button>
-                <button onClick={onNext} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8C8479', fontFamily: font }}>稍後設定</button>
+                <button onClick={handleNext} disabled={saving} style={{ width: '100%', padding: '14px', borderRadius: 24, border: 'none', backgroundColor: saving ? '#D6CFC6' : '#1C1A18', color: '#F2EDE6', fontSize: 14, fontWeight: 500, fontFamily: font, cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    {saving ? '儲存中⋯' : '下一步'}
+                </button>
+                <button onClick={onNext} disabled={saving} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8C8479', fontFamily: font }}>稍後設定</button>
             </div>
 
             <ProgressDots current={0} total={2} />
@@ -319,12 +373,47 @@ function VerifyCard({ title, desc, verified, onVerify }) {
 
 // ── Step 2: 實名驗證 ──────────────────────────────────────────────────────────
 function VerifyStep({ onFinish, onSkip }) {
-    const [realVerified, setRealVerified] = useState(false)
+    const [realStatus, setRealStatus] = useState('none') // none | pending | approved
     const [smsVerified, setSmsVerified] = useState(false)
     const [showRealModal, setShowRealModal] = useState(false)
     const [showSmsModal, setShowSmsModal] = useState(false)
 
     const BENEFITS = ['認證標章顯示於個人頁', '提升買家信任，加速成交', '解鎖高價商品交易資格']
+
+    // 真人驗證卡片顯示不同狀態
+    const RealVerifyCard = () => {
+        if (realStatus === 'approved') {
+            return (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: '16px 20px', border: '1px solid #E8DDD0' }}>
+                    <div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#1C1A18', fontFamily: font }}>真人驗證</div>
+                        <div style={{ fontSize: 12, color: '#8C8479', fontFamily: font }}>上傳自拍照 &middot; 審核 1-3 個工作天</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#E8F5E9', padding: '5px 10px', borderRadius: 10 }}>
+                        <CheckCircle2 size={12} color="#4CAF50" strokeWidth={2} />
+                        <span style={{ fontSize: 11, color: '#4CAF50', fontWeight: 500, fontFamily: font }}>已驗證</span>
+                    </div>
+                </div>
+            )
+        }
+        if (realStatus === 'pending') {
+            return (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFFFFF', borderRadius: 12, padding: '16px 20px', border: '1px solid #E8DDD0' }}>
+                    <div>
+                        <div style={{ fontSize: 14, fontWeight: 500, color: '#1C1A18', fontFamily: font }}>真人驗證</div>
+                        <div style={{ fontSize: 12, color: '#8C8479', fontFamily: font }}>已提交，審核通常需 1–3 個工作天</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, backgroundColor: '#FFF8E1', padding: '5px 10px', borderRadius: 10 }}>
+                        <Clock size={12} color="#F9A825" strokeWidth={2} />
+                        <span style={{ fontSize: 11, color: '#F9A825', fontWeight: 500, fontFamily: font }}>審核中</span>
+                    </div>
+                </div>
+            )
+        }
+        return (
+            <VerifyCard title="真人驗證" desc="上傳自拍照 &middot; 審核 1-3 個工作天" verified={false} onVerify={() => setShowRealModal(true)} />
+        )
+    }
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28, width: '100%', maxWidth: 520, padding: '0 16px 40px' }}>
@@ -353,7 +442,7 @@ function VerifyStep({ onFinish, onSkip }) {
 
             {/* Verify cards */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
-                <VerifyCard title="真人驗證" desc="上傳自拍照 · 審核 1-3 個工作天" verified={realVerified} onVerify={() => setShowRealModal(true)} />
+                <RealVerifyCard />
                 <VerifyCard title="簡訊驗證" desc="綁定手機，即時接收交易通知" verified={smsVerified} onVerify={() => setShowSmsModal(true)} />
             </div>
 
@@ -365,7 +454,7 @@ function VerifyStep({ onFinish, onSkip }) {
             <ProgressDots current={1} total={2} />
 
             {/* Modals */}
-            {showRealModal && <RealPersonModal onClose={() => setShowRealModal(false)} onSuccess={() => setRealVerified(true)} />}
+            {showRealModal && <RealPersonModal onClose={() => setShowRealModal(false)} onSuccess={(status) => setRealStatus(status)} />}
             {showSmsModal && <SmsModal onClose={() => setShowSmsModal(false)} onSuccess={() => setSmsVerified(true)} />}
         </div>
     )

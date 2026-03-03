@@ -41,9 +41,93 @@ export const userApi = {
     getProfile: (username) => api.get(`/users/${username}`),
     getMe: () => api.get('/users/me'),
     updateMe: (data) => api.patch('/users/me', data),
+    changePassword: (data) => api.patch('/users/me/password', data),
+    updateAvatar: (formData) => api.put('/users/me/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
     completeOnboarding: (data) => api.post('/users/me/onboarding', data),
     follow: (username) => api.post(`/users/${username}/follow`),
     unfollow: (username) => api.delete(`/users/${username}/follow`),
 }
 
+// ── Verification API ─────────────────────────────────────────────────────────
+export const verificationApi = {
+    getRealPersonStatus: () => api.get('/users/me/verification/real-person'),
+    submitRealPerson: (data) => api.post('/users/me/verification/real-person', data),
+}
+
+// ── Media API ────────────────────────────────────────────────────────────────
+export const mediaApi = {
+    upload: (file) => {
+        const form = new FormData()
+        form.append('file', file)
+        return api.post('/media/upload', form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            timeout: 30000,
+        })
+    },
+}
+
+// ── Post API ─────────────────────────────────────────────────────────────────
+export const postApi = {
+    getFeed: () => api.get('/feed'),
+    getPost: (id) => api.get(`/posts/${id}`),
+    getComments: (id) => api.get(`/posts/${id}/comments`),
+    createPost: (data) => api.post('/posts', data),
+    deletePost: (id) => api.delete(`/posts/${id}`),
+    likePost: (id) => api.post(`/posts/${id}/like`),
+    unlikePost: (id) => api.delete(`/posts/${id}/like`),
+    addComment: (id, data) => api.post(`/posts/${id}/comments`, data),
+    deleteComment: (postId, commentId) => api.delete(`/posts/${postId}/comments/${commentId}`),
+}
+
+// ── Work API ──────────────────────────────────────────────────────────────────
+export const workApi = {
+    getWorks: (username) => api.get(`/users/${username}/works`),
+    createWork: (data) => api.post('/users/me/works', data),
+    updateWork: (id, data) => api.patch(`/works/${id}`, data),
+    deleteWork: (id) => api.delete(`/works/${id}`),
+}
+
+// ── Zone API ──────────────────────────────────────────────────────────────────
+export const zoneApi = {
+    listZones: () => api.get('/zones'),
+    getZone: (id) => api.get(`/zones/${id}`),
+    createZone: (data) => api.post('/zones', data),
+    updateZone: (id, data) => api.patch(`/zones/${id}`, data),
+    deleteZone: (id) => api.delete(`/zones/${id}`),
+    apply: (id, data) => api.post(`/zones/${id}/apply`, data),
+    cancelApply: (id) => api.delete(`/zones/${id}/apply`),
+    getMyZones: () => api.get('/users/me/zones'),
+    getMyApplications: () => api.get('/users/me/applications'),
+    getApplications: (zoneId) => api.get(`/zones/${zoneId}/applications`),
+    reviewApplication: (zoneId, appId, action) => api.patch(`/zones/${zoneId}/applications/${appId}`, { action }),
+}
+
+// ── User extended ─────────────────────────────────────────────────────────────
+export const userExtendedApi = {
+    getFollowers: (username) => api.get(`/users/${username}/followers`),
+    getFollowing: (username) => api.get(`/users/${username}/following`),
+    getReviews: (username) => api.get(`/users/${username}/reviews`),
+}
+
+
+// ── Notification API ──────────────────────────────────────────────────────────
+export const notifApi = {
+    list: () => api.get('/notifications'),
+    markRead: (id) => api.patch(`/notifications/${id}/read`),
+    markReadAll: () => api.patch('/notifications/read-all'),
+}
+
+// ── Chat API ──────────────────────────────────────────────────────────────────
+export const chatApi = {
+    getZoneChats: () => api.get('/chats/zones'),
+    getDmChats: () => api.get('/chats/dm'),
+    createDm: (username) => api.post('/chats/dm', { username }),
+    getMessages: (chatId) => api.get(`/chats/${chatId}/messages`),
+    sendMessage: (chatId, content, type = 'text') => api.post(`/chats/${chatId}/messages`, { type, content }),
+    markRead: (chatId) => api.patch(`/chats/${chatId}/read`),
+    getTransaction: (chatId) => api.get(`/chats/${chatId}/transaction`),
+    updateTransaction: (chatId, status) => api.patch(`/chats/${chatId}/transaction`, { status }),
+}
+
 export default api
+

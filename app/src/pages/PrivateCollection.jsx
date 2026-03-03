@@ -1,118 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Clock, Users, MessageCircle, Edit2, ClipboardList, CheckCircle, XCircle, HelpCircle } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import { zoneApi, mediaApi } from '../services/api'
 
-// ── Mock: 我開的 ───────────────────────────────────────────────────────────────
-const MOCK_MY_ZONES = {
-    active: [
-        {
-            id: '1',
-            title: '春季限定｜復古洋裝私藏',
-            image: 'https://images.unsplash.com/photo-1603098437768-4b9ba6b4d179?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-            timeLeft: '剩餘 2 天',
-            timeUrgent: false,
-            applied: '3/5',
-            pendingCount: 2,
-            status: '進行中',
-        },
-        {
-            id: '2',
-            title: '設計師包款｜經典釋出',
-            image: 'https://images.unsplash.com/photo-1654707576694-976898f848d9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-            timeLeft: '剩餘 5 天',
-            timeUrgent: false,
-            applied: '1/3',
-            pendingCount: 0,
-            status: '進行中',
-        },
-    ],
-    ended: [
-        {
-            id: '3',
-            title: '絲質襯衫收藏｜限量三件',
-            image: 'https://images.unsplash.com/photo-1761896898277-5141377f2a12?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-            timeLeft: '已結束',
-            timeUrgent: false,
-            applied: '3/3',
-            pendingCount: 0,
-            status: '已結束',
-        },
-        {
-            id: '4',
-            title: '皮革外套特選｜秋冬限定',
-            image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-            timeLeft: '已結束',
-            timeUrgent: false,
-            applied: '2/5',
-            pendingCount: 0,
-            status: '已結束',
-        },
-        {
-            id: '5',
-            title: '日本帶回純棉上衣 × 4',
-            image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-            timeLeft: '已結束',
-            timeUrgent: false,
-            applied: '4/4',
-            pendingCount: 0,
-            status: '已結束',
-        },
-    ],
-}
-
-// ── Mock: 我申請的 ─────────────────────────────────────────────────────────────
-const MOCK_MY_APPLICATIONS = [
-    {
-        id: 'a1',
-        zoneTitle: '法式蕾絲裙組合｜買家限定',
-        zoneImage: 'https://images.unsplash.com/photo-1469334031218-e382a71b716b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-        seller: 'luna_closet',
-        sellerAvatarColor: '#C4A882',
-        appliedAt: '2 天前',
-        timeLeft: '剩餘 18 小時',
-        timeUrgent: true,
-        appStatus: '審核中',
-    },
-    {
-        id: 'a2',
-        zoneTitle: '春季限定｜復古洋裝私藏',
-        zoneImage: 'https://images.unsplash.com/photo-1603098437768-4b9ba6b4d179?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-        seller: 'shimmer_style',
-        sellerAvatarColor: '#C4A882',
-        appliedAt: '5 天前',
-        timeLeft: '剩餘 2 天',
-        timeUrgent: false,
-        appStatus: '已通過',
-    },
-    {
-        id: 'a3',
-        zoneTitle: '設計師包款｜經典釋出',
-        zoneImage: 'https://images.unsplash.com/photo-1654707576694-976898f848d9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-        seller: 'velvet_noir',
-        sellerAvatarColor: '#8C8479',
-        appliedAt: '1 週前',
-        timeLeft: '剩餘 5 天',
-        timeUrgent: false,
-        appStatus: '未通過',
-    },
-    {
-        id: 'a4',
-        zoneTitle: '絲質襯衫收藏｜限量三件',
-        zoneImage: 'https://images.unsplash.com/photo-1761896898277-5141377f2a12?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400',
-        seller: 'silk_archive',
-        sellerAvatarColor: '#E8DDD0',
-        appliedAt: '2 週前',
-        timeLeft: '已結束',
-        timeUrgent: false,
-        appStatus: '已通過',
-    },
-]
-
-const MINE_TAB_CONFIG = [
-    { key: 'active', label: '進行中', count: MOCK_MY_ZONES.active.length },
-    { key: 'ended', label: '已結束', count: MOCK_MY_ZONES.ended.length },
-]
 
 // ── Application Status Badge ──────────────────────────────────────────────────
 function AppStatusBadge({ status }) {
@@ -267,7 +158,7 @@ function ZoneRow({ zone, tabKey, onReview, onChat, onEdit }) {
 }
 
 // ── Application Row (我申請的) ────────────────────────────────────────────────
-function ApplicationRow({ app }) {
+function ApplicationRow({ app, onCancel }) {
     const isPassed = app.appStatus === '已通過'
     const isPending = app.appStatus === '審核中'
     const isMobile = useIsMobile()
@@ -283,7 +174,7 @@ function ApplicationRow({ app }) {
                 </button>
             )}
             {isPending && (
-                <button style={{ ...btnStyle('#FFFFFF', '#8C8479', '#E8DDD0'), ...(isMobile ? { flex: 1, justifyContent: 'center' } : {}) }}
+                <button onClick={onCancel} style={{ ...btnStyle('#FFFFFF', '#8C8479', '#E8DDD0'), ...(isMobile ? { flex: 1, justifyContent: 'center' } : {}) }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F5F1EC'}
                     onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FFFFFF'}
                 >
@@ -617,12 +508,52 @@ function ZoneFormFields({ values, onChange }) {
 }
 
 // ── Edit Zone Modal ────────────────────────────────────────────────────────────
-function EditZoneModal({ zone, onClose }) {
+function EditZoneModal({ zone, onClose, onUpdated }) {
     const [values, setValues] = useState({
-        title: zone.title, desc: '', startDate: '', endDate: '',
-        slots: '5', creditMin: '0', requireIntro: true, photos: [], coverId: '',
+        title: zone.title, desc: zone.raw?.description || '', startDate: zone.raw?.starts_at ? new Date(zone.raw.starts_at).toISOString().split('T')[0] : '', endDate: zone.raw?.ends_at ? new Date(zone.raw.ends_at).toISOString().split('T')[0] : '',
+        slots: String(zone.raw?.total_slots || 5), creditMin: String(zone.raw?.min_credit_score || 0), requireIntro: zone.raw?.require_intro || true,
+        photos: (zone.raw?.photos || []).map(p => ({ id: p.id, url: p.url })),
+        coverId: (zone.raw?.photos || []).find(p => p.is_cover)?.id || (zone.raw?.photos?.[0]?.id || ''),
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
+    const [saving, setSaving] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+
+    const handleSave = async () => {
+        if (!values.title.trim()) return
+        setSaving(true)
+        try {
+            const photoInputs = values.photos.map((p, i) => ({
+                id: p.id, // Keep existing photo IDs
+                url: p.url,
+                sort_order: i,
+                is_cover: p.id === values.coverId,
+            }))
+
+            await zoneApi.updateZone(zone.id, {
+                title: values.title,
+                description: values.desc,
+                starts_at: values.startDate ? new Date(values.startDate).toISOString() : null,
+                ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
+                total_slots: parseInt(values.slots || '1', 10),
+                min_credit_score: parseInt(values.creditMin || '0', 10),
+                require_intro: values.requireIntro,
+                photos: photoInputs,
+            })
+            onUpdated?.()
+            onClose()
+        } catch { /* 保持 Modal 開啟 */ } finally { setSaving(false) }
+    }
+
+    const handleDelete = async () => {
+        if (!window.confirm('確定要關閉此私藏？確定後申請者將無法再申請。')) return
+        setDeleting(true)
+        try {
+            await zoneApi.deleteZone(zone.id)
+            onUpdated?.()
+            onClose()
+        } catch { /* 保持 Modal 開啟 */ } finally { setDeleting(false) }
+    }
 
     return (
         <div onClick={onClose} style={{
@@ -666,28 +597,28 @@ function EditZoneModal({ zone, onClose }) {
                         border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
                     }}>取消</button>
-                    <button onClick={onClose} style={{
+                    <button onClick={handleSave} disabled={saving || !values.title.trim()} style={{
                         flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
-                        backgroundColor: values.title.trim() ? '#1C1A18' : '#D4CCC4',
+                        backgroundColor: (values.title.trim() && !saving) ? '#1C1A18' : '#D4CCC4',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
                         fontWeight: 600, color: '#F2EDE6',
-                        cursor: values.title.trim() ? 'pointer' : 'not-allowed',
-                    }}>儲存變更</button>
+                        cursor: (values.title.trim() && !saving) ? 'pointer' : 'not-allowed',
+                    }}>{saving ? '儲存中⋯' : '儲存變更'}</button>
                 </div>
 
                 {/* 關閉私藏 danger zone */}
                 <div style={{ borderTop: '1px solid #F0EBE3', paddingTop: 14 }}>
-                    <button onClick={onClose} style={{
+                    <button onClick={handleDelete} disabled={deleting} style={{
                         width: '100%', padding: '12px 0', borderRadius: 8,
                         border: '1px solid #EDCFCF', backgroundColor: '#FDF6F6',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
-                        color: '#C0392B', cursor: 'pointer',
+                        color: deleting ? '#B0A89A' : '#C0392B', cursor: deleting ? 'not-allowed' : 'pointer',
                         transition: 'background-color 0.15s',
                     }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#FAE8E8'}
+                        onMouseEnter={e => { if (!deleting) e.currentTarget.style.backgroundColor = '#FAE8E8' }}
                         onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FDF6F6'}
                     >
-                        關閉私藏
+                        {deleting ? '關閉中⋯' : '關閉私藏'}
                     </button>
                     <div style={{
                         fontSize: 11, color: '#B0A89A', textAlign: 'center',
@@ -702,12 +633,39 @@ function EditZoneModal({ zone, onClose }) {
 }
 
 // ── New Zone Modal ─────────────────────────────────────────────────────────────
-function NewZoneModal({ onClose }) {
+function NewZoneModal({ onClose, onCreated }) {
     const [values, setValues] = useState({
         title: '', desc: '', startDate: '', endDate: '',
         slots: '3', creditMin: '0', requireIntro: true, photos: [], coverId: '',
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
+    const [saving, setSaving] = useState(false)
+
+    const handleCreate = async () => {
+        if (!values.title.trim()) return
+        setSaving(true)
+        try {
+            // 過濾掉尚未上傳的 base64 圖片，只收集真實 URL
+            const finalPhotos = values.photos
+                .filter(p => !p.url.startsWith('data:'))
+                .map((p, i) => ({
+                    url: p.url,
+                    sort_order: i,
+                    is_cover: p.id === values.coverId,
+                }))
+
+            await zoneApi.createZone({
+                title: values.title,
+                description: values.desc,
+                ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
+                total_slots: parseInt(values.slots || '1', 10),
+                min_credit_score: parseInt(values.creditMin || '0', 10),
+                photos: finalPhotos,
+            })
+            onCreated?.()
+            onClose()
+        } catch { /* 保持 Modal 開啟 */ } finally { setSaving(false) }
+    }
 
     return (
         <div onClick={onClose} style={{
@@ -741,13 +699,13 @@ function NewZoneModal({ onClose }) {
                         border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
                     }}>取消</button>
-                    <button onClick={onClose} style={{
+                    <button onClick={handleCreate} disabled={saving || !values.title.trim()} style={{
                         flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
-                        backgroundColor: values.title.trim() ? '#1C1A18' : '#D4CCC4',
+                        backgroundColor: (values.title.trim() && !saving) ? '#1C1A18' : '#D4CCC4',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
                         fontWeight: 600, color: '#F2EDE6',
-                        cursor: values.title.trim() ? 'pointer' : 'not-allowed',
-                    }}>開設私藏</button>
+                        cursor: (values.title.trim() && !saving) ? 'pointer' : 'not-allowed',
+                    }}>{saving ? '開設中⋯' : '開設私藏'}</button>
                 </div>
                 <div style={{
                     fontSize: 11, color: '#B0A89A', textAlign: 'center',
@@ -760,21 +718,106 @@ function NewZoneModal({ onClose }) {
     )
 }
 
+// ── 後端資料正規化 ─────────────────────────────────────────────────────────────
+function normalizeZone(z) {
+    const coverPhoto = (z.photos || []).find(p => p.is_cover) || (z.photos || [])[0]
+    const endsAt = z.ends_at ? new Date(z.ends_at) : null
+    const now = new Date()
+    const isEnded = z.status === 'ended' || (endsAt && endsAt < now)
+    let timeLeft = '已結束'
+    if (!isEnded && endsAt) {
+        const diffMs = endsAt - now
+        const diffDays = Math.ceil(diffMs / 86400000)
+        timeLeft = diffDays <= 1 ? '剩餘 1 天' : `剩餘 ${diffDays} 天`
+    } else if (!isEnded) { timeLeft = '進行中' }
+    return {
+        id: z.id,
+        title: z.title,
+        image: coverPhoto?.url || '',
+        timeLeft,
+        timeUrgent: !isEnded && endsAt && (endsAt - now) < 86400000 * 2,
+        applied: `${z.accepted_count ?? 0}/${z.total_slots ?? 0}`,
+        pendingCount: z.pending_count ?? 0,
+        status: isEnded ? '已結束' : '進行中',
+        raw: z,
+    }
+}
+
+function normalizeApp(a) {
+    const zone = a.zone || {}
+    const coverPhoto = (zone.photos || []).find(p => p.is_cover) || (zone.photos || [])[0]
+    const endsAt = zone.ends_at ? new Date(zone.ends_at) : null
+    const now = new Date()
+    const STATUS_MAP = { pending: '審核中', approved: '已通過', rejected: '未通過' }
+    const diffMs = endsAt ? endsAt - now : 0
+    const diffDays = Math.ceil(diffMs / 86400000)
+    const timeLeft = !endsAt ? '—' : diffMs < 0 ? '已結束' : diffDays <= 1 ? '剩餘 1 天' : `剩餘 ${diffDays} 天`
+    // 時間正規化
+    const appliedDate = new Date(a.applied_at)
+    const diffApply = Date.now() - appliedDate.getTime()
+    const applyDays = Math.floor(diffApply / 86400000)
+    const appliedAt = applyDays === 0 ? '今天' : applyDays === 1 ? '1 天前' : `${applyDays} 天前`
+    return {
+        id: a.id,
+        zoneId: a.zone_id,
+        zoneTitle: zone.title || '私藏',
+        zoneImage: coverPhoto?.url || '',
+        seller: zone.seller?.username || '',
+        sellerAvatarColor: '#C4A882',
+        appliedAt,
+        timeLeft,
+        timeUrgent: endsAt && diffMs > 0 && diffMs < 86400000 * 2,
+        appStatus: STATUS_MAP[a.status] || '審核中',
+        raw: a,
+    }
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function PrivateCollection() {
     const navigate = useNavigate()
     const [mainTab, setMainTab] = useState('mine')    // 'mine' | 'applied'
-    const [activeTab, setActiveTab] = useState('active')
+    const [activeTab, setActiveTab] = useState('active')   // 'active' | 'ended'
     const [showNewModal, setShowNewModal] = useState(false)
-    const [editingZone, setEditingZone] = useState(null)   // zone object being edited
+    const [editingZone, setEditingZone] = useState(null)
+
+    // 後端資料
+    const [myZones, setMyZones] = useState([])       // normalizeZone[]
+    const [myApps, setMyApps] = useState([])          // normalizeApp[]
+    const [loading, setLoading] = useState(true)
 
     const isMine = mainTab === 'mine'
-    const zones = MOCK_MY_ZONES[activeTab] || []
+
+    // 視準展示 list
+    const zones = myZones.filter(z =>
+        activeTab === 'active' ? z.status === '進行中' : z.status === '已結束'
+    )
+    const activeCount = myZones.filter(z => z.status === '進行中').length
+    const endedCount = myZones.filter(z => z.status === '已結束').length
+    const MINE_TAB_CONFIG = [
+        { key: 'active', label: '進行中', count: activeCount },
+        { key: 'ended', label: '已結束', count: endedCount },
+    ]
 
     const MAIN_TABS = [
         { key: 'mine', label: '我開的' },
         { key: 'applied', label: '我申請的' },
     ]
+
+    // 載入資料
+    const loadData = useCallback(async () => {
+        setLoading(true)
+        try {
+            const [zonesRes, appsRes] = await Promise.all([
+                zoneApi.getMyZones(),
+                zoneApi.getMyApplications(),
+            ])
+            setMyZones((zonesRes.data.data || []).map(normalizeZone))
+            setMyApps((appsRes.data.data || []).map(normalizeApp))
+        } catch { /* 保持空狀態 */ }
+        finally { setLoading(false) }
+    }, [])
+
+    useEffect(() => { loadData() }, [loadData])
 
     const isMobile = useIsMobile()
 
@@ -870,7 +913,11 @@ export default function PrivateCollection() {
 
                 {/* ── List */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {isMine
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
+                            載入中⋯
+                        </div>
+                    ) : isMine
                         ? zones.map(zone => (
                             <ZoneRow key={zone.id} zone={zone} tabKey={activeTab}
                                 onReview={() => navigate('/review')}
@@ -878,7 +925,9 @@ export default function PrivateCollection() {
                                 onEdit={() => setEditingZone(zone)}
                             />
                         ))
-                        : MOCK_MY_APPLICATIONS.map(app => <ApplicationRow key={app.id} app={app} />)
+                        : myApps.map(app => <ApplicationRow key={app.id} app={app} onCancel={async () => {
+                            try { await zoneApi.cancelApply(app.zoneId); loadData() } catch { }
+                        }} />)
                     }
 
                     {isMine && zones.length === 0 && (
@@ -892,8 +941,8 @@ export default function PrivateCollection() {
                 </div>
             </div>
 
-            {showNewModal && <NewZoneModal onClose={() => setShowNewModal(false)} />}
-            {editingZone && <EditZoneModal zone={editingZone} onClose={() => setEditingZone(null)} />}
+            {showNewModal && <NewZoneModal onClose={() => setShowNewModal(false)} onCreated={loadData} />}
+            {editingZone && <EditZoneModal zone={editingZone} onClose={() => setEditingZone(null)} onUpdated={loadData} />}
         </div>
     )
 }

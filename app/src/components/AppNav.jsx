@@ -1,72 +1,41 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, X, User, LogOut } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import { useAuth } from '../context/AuthContext'
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock：未讀訊息總數（實際應從全域狀態/API 取得）
-// ─────────────────────────────────────────────────────────────────────────────
-const UNREAD_MSG_COUNT = 3
+import { notifApi, chatApi } from '../services/api'
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock 通知資料
-// ─────────────────────────────────────────────────────────────────────────────
-const MOCK_NOTIFICATIONS = [
-    {
-        id: 'n1', type: 'like', read: false,
-        avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=40&h=40&fit=crop&crop=face',
-        user: 'velvet_noir',
-        text: '對你的作品按讚',
-        meta: '春日輕紗系列 #3',
-        time: '3 分鐘前',
-    },
-    {
-        id: 'n2', type: 'comment', read: false,
-        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=40&h=40&fit=crop&crop=face',
-        user: 'luna_closet',
-        text: '留言：「這真的太美了！請問有出租嗎？」',
-        meta: '秋冬絕色私藏展',
-        time: '18 分鐘前',
-    },
-    {
-        id: 'n3', type: 'zone_apply', read: false,
-        avatar: 'https://images.unsplash.com/photo-1502767089025-6572583495d7?w=40&h=40&fit=crop&crop=face',
-        user: 'silk_archive',
-        text: '申請進入你的私藏',
-        meta: '春季限定｜復古洋裝私藏',
-        time: '1 小時前',
-    },
-    {
-        id: 'n4', type: 'zone_approved', read: true,
-        avatar: null,
-        user: null,
-        text: '你申請的私藏已通過審核',
-        meta: '法式蕾絲裙組合｜買家限定',
-        time: '2 小時前',
-    },
-    {
-        id: 'n5', type: 'zone_rejected', read: true,
-        avatar: null,
-        user: null,
-        text: '你申請的私藏未通過審核',
-        meta: '設計師包款｜經典釋出',
-        time: '昨天',
-    },
-    {
-        id: 'n6', type: 'like', read: true,
-        avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=40&h=40&fit=crop&crop=face',
-        user: 'retro_rose',
-        text: '對你的作品按讚',
-        meta: '白日夢境私影集',
-        time: '昨天',
-    },
-]
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 通知類型設定
-// ─────────────────────────────────────────────────────────────────────────────
+// 通知時間格式化
+function formatTime(dateStr) {
+    if (!dateStr) return ''
+    const diff = Date.now() - new Date(dateStr).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return '剛剛'
+    if (mins < 60) return `${mins} 分鐘前`
+    const hours = Math.floor(mins / 60)
+    if (hours < 24) return `${hours} 小時前`
+    const days = Math.floor(hours / 24)
+    if (days < 7) return `${days} 天前`
+    return new Date(dateStr).toLocaleDateString('zh-TW')
+}
+
+// 通知資料正規化（後端欄位 → 前端 UI 欄位）
+function normalizeNotif(n) {
+    const actor = n.actor
+    return {
+        id: n.id,
+        type: n.type,
+        read: n.read,
+        avatar: actor?.avatar_url || null,
+        user: actor?.username || null,
+        text: n.message,
+        meta: null,
+        time: formatTime(n.created_at),
+    }
+}
+
 const TYPE_CONFIG = {
     like: { Icon: Heart, color: '#E07A5F', bg: '#FEF0EC', label: '按讚' },
     comment: { Icon: MessageCircle, color: '#4A90D9', bg: '#EEF5FE', label: '留言' },
@@ -240,10 +209,24 @@ function NotifPanel({ notifications, onRead, onReadAll, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function NotifBell() {
     const [open, setOpen] = useState(false)
-    const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS)
+    const [notifications, setNotifications] = useState([])
     const ref = useRef(null)
 
     const unreadCount = notifications.filter(n => !n.read).length
+
+    const load = useCallback(async () => {
+        try {
+            const res = await notifApi.list()
+            const raw = res.data.data || []
+            setNotifications(raw.map(normalizeNotif))
+        } catch { /* 靜默失敗 */ }
+    }, [])
+
+    useEffect(() => {
+        load()
+        const timer = setInterval(load, 30000)
+        return () => clearInterval(timer)
+    }, [load])
 
     // 點外部關閉
     useEffect(() => {
@@ -255,12 +238,14 @@ function NotifBell() {
         return () => document.removeEventListener('mousedown', handler)
     }, [open])
 
-    const markRead = (id) => {
+    const markRead = async (id) => {
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+        try { await notifApi.markRead(id) } catch { /* 靜默 */ }
     }
 
-    const markReadAll = () => {
+    const markReadAll = async () => {
         setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+        try { await notifApi.markReadAll() } catch { /* 靜默 */ }
     }
 
     return (
@@ -305,14 +290,39 @@ function NotifBell() {
     )
 }
 
+// ── 動態未讀訊息數
+function ChatBadge() {
+    const [unread, setUnread] = useState(0)
+    useEffect(() => {
+        let cancelled = false
+        const load = async () => {
+            try {
+                const res = await chatApi.getDmChats()
+                const chats = res.data.data || []
+                const total = chats.reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
+                if (!cancelled) setUnread(total)
+            } catch { /* 靜默 */ }
+        }
+        load()
+        const timer = setInterval(load, 30000)
+        return () => { cancelled = true; clearInterval(timer) }
+    }, [])
+    if (unread <= 0) return null
+    return (
+        <span style={{
+            position: 'absolute', top: -3, right: -4,
+            minWidth: 14, height: 14, borderRadius: 7, paddingBottom: 1,
+            backgroundColor: '#E07A5F', color: '#FFFFFF',
+            fontSize: 9, fontWeight: 700, lineHeight: '14px',
+            textAlign: 'center', fontFamily: 'Noto Sans TC, sans-serif',
+            border: '1.5px solid #3A3531',
+        }}>{unread > 9 ? '9+' : unread}</span>
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AppNav
 // ─────────────────────────────────────────────────────────────────────────────
-const CURRENT_USER = {
-    name: 'my_account',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=64&h=64&fit=crop&crop=face'
-}
-
 const NAV_ITEMS = [
     { icon: LayoutGrid, to: '/home', label: '首頁' },
     { icon: Search, to: '/explore', label: '探索' },
@@ -346,11 +356,7 @@ function MobileBottomNav() {
                     <Link key={to} to={to} style={{ textDecoration: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 12 }}>
                             <Icon size={22} strokeWidth={1.5} color={color} />
-                            {hasBadge && UNREAD_MSG_COUNT > 0 && (
-                                <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 14, height: 14, borderRadius: 7, backgroundColor: '#E07A5F', color: '#FFFFFF', fontSize: 9, fontWeight: 700, lineHeight: '14px', textAlign: 'center', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                                    {UNREAD_MSG_COUNT > 9 ? '9+' : UNREAD_MSG_COUNT}
-                                </span>
-                            )}
+                            {hasBadge && <ChatBadge />}
                         </div>
                     </Link>
                 )
@@ -424,18 +430,7 @@ export default function AppNav() {
                             onMouseLeave={e => e.currentTarget.style.color = location.pathname === '/chat' ? '#C4A882' : '#8C8479'}
                         >
                             <Mail size={20} strokeWidth={1.5} />
-                            {UNREAD_MSG_COUNT > 0 && (
-                                <span style={{
-                                    position: 'absolute', top: -3, right: -4,
-                                    minWidth: 14, height: 14, borderRadius: 7, paddingBottom: 1,
-                                    backgroundColor: '#E07A5F', color: '#FFFFFF',
-                                    fontSize: 9, fontWeight: 700, lineHeight: '14px',
-                                    textAlign: 'center', fontFamily: 'Noto Sans TC, sans-serif',
-                                    border: '1.5px solid #3A3531',
-                                }}>
-                                    {UNREAD_MSG_COUNT > 9 ? '9+' : UNREAD_MSG_COUNT}
-                                </span>
-                            )}
+                            <ChatBadge />
                         </Link>
                         <UserMenu />
                     </div>
@@ -455,7 +450,10 @@ function UserMenu() {
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     const navigate = useNavigate()
-    const { logout } = useAuth()
+    const { logout, currentUser } = useAuth()
+
+    const avatarUrl = currentUser?.avatar_url || null
+    const displayName = currentUser?.username || ''
 
     useEffect(() => {
         if (!open) return
@@ -487,12 +485,14 @@ function UserMenu() {
                     cursor: 'pointer', flexShrink: 0, padding: 0, border: 'none',
                     outline: open ? '2px solid #C4A882' : '1.5px solid rgba(196,168,130,0.4)',
                     outlineOffset: 1, transition: 'outline 0.2s',
+                    backgroundColor: '#8C8479',
                 }}
             >
-                <img
-                    src={CURRENT_USER.avatar} alt={CURRENT_USER.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
+                {avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : (
+                    <User size={18} color="#F2EDE6" strokeWidth={1.5} style={{ display: 'block', margin: '7px auto' }} />
+                )}
             </button>
 
             {/* 下拉選單 */}
@@ -508,9 +508,15 @@ function UserMenu() {
                         padding: '12px 16px', borderBottom: '1px solid #F0EBE3',
                         display: 'flex', alignItems: 'center', gap: 10,
                     }}>
-                        <img src={CURRENT_USER.avatar} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                        {avatarUrl ? (
+                            <img src={avatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#8C8479', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <User size={14} color="#F2EDE6" strokeWidth={1.5} />
+                            </div>
+                        )}
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                            {CURRENT_USER.name}
+                            {displayName}
                         </span>
                     </div>
 

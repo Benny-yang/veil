@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Send, ChevronDown, ChevronUp, UserCheck, Star, Package, CreditCard, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import { chatApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 常數
@@ -17,79 +19,7 @@ const TX_STEP_INDEX = Object.fromEntries(TX_STEPS.map((s, i) => [s.key, i]))
 // 逾時天數設定
 const TIMEOUT_DAYS = { pending_payment: 3, paid: 7, shipped: 14 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock 資料
-// ─────────────────────────────────────────────────────────────────────────────
-const INITIAL_ZONE_CHATS = [
-    {
-        zoneId: 'z1', zoneTitle: '春季限定｜復古洋裝私藏',
-        totalSlots: 3, collectorCount: 1,
-        chats: [
-            {
-                id: 'zc1', peer: 'velvet_noir', avatarColor: '#E8DDD0',
-                lastMsg: '想了解一下尺寸和狀態 🙏', status: '對話中', statusColor: '#C4A882', role: '買家',
-                tx: null, unread: 2,
-            },
-            {
-                id: 'zc2', peer: 'retro_rose', avatarColor: '#8C8479',
-                lastMsg: '我剛付款了！', status: '收藏家', statusColor: '#4CAF50', role: '收藏家',
-                // 模擬：已付款，逾時 10 天（超過 7 天門檻）→ 橘色警告顯示
-                tx: { status: 'paid', updatedAt: Date.now() - 10 * 86400000, buyerReviewed: false, sellerReviewed: false },
-                unread: 0,
-            },
 
-            {
-                id: 'zc3', peer: 'silk_archive', avatarColor: '#E8DDD0',
-                lastMsg: '收到了！太美了 ✨', status: '收藏家', statusColor: '#4CAF50', role: '收藏家',
-                // 模擬：已完成，尚未評價
-                tx: { status: 'completed', updatedAt: Date.now() - 2 * 86400000, buyerReviewed: true, sellerReviewed: false },
-                unread: 1,
-            },
-        ],
-    },
-    {
-        zoneId: 'z2', zoneTitle: '設計師包款｜經典釋出',
-        totalSlots: 2, collectorCount: 0,
-        chats: [
-            {
-                id: 'zc4', peer: 'lux_finder', avatarColor: '#C4A882',
-                lastMsg: '請問有保卡嗎？', status: '對話中', statusColor: '#C4A882', role: '買家',
-                tx: null, unread: 0,
-            },
-        ],
-    },
-]
-
-const MOCK_DM_CHATS = [
-    { id: 'dm1', peer: 'luna_closet', avatarColor: '#C4A882', lastMsg: '謝謝你的推薦～很喜歡！', time: '昨天', unread: 1 },
-    { id: 'dm2', peer: 'velvet_archive', avatarColor: '#8C8479', lastMsg: '請問有在收古著嗎？', time: '2 天前', unread: 0 },
-]
-
-const INITIAL_MESSAGES = {
-    zc1: [
-        { id: 'm1', from: 'peer', text: '嗨！謝謝你的申請，想了解一下有哪些尺寸？', time: '下午 3:42' },
-        { id: 'm2', from: 'me', text: '這件是 S 號，穿過一次，蕾絲完全沒有損傷。\n實品顏色比照片更好看哦 ✨', time: '下午 3:48' },
-    ],
-    zc2: [
-        { id: 'm1', from: 'peer', text: '已付款！麻煩盡快寄出，感謝 🙏', time: '5 天前 下午 2:10' },
-    ],
-    zc3: [
-        { id: 'm1', from: 'peer', text: '收到了！太美了 ✨', time: '3 天前' },
-        { id: 'm2', from: 'me', text: '很高興你喜歡～歡迎成為私藏家 🎉', time: '3 天前' },
-        { id: 'sys1', from: 'system', text: '✅ silk_archive 已被設為收藏家', time: '3 天前' },
-        { id: 'sys2', from: 'system', text: '📦 交易已完成', time: '2 天前' },
-    ],
-    zc4: [
-        { id: 'm1', from: 'peer', text: '請問有保卡嗎？', time: '下午 1:00' },
-    ],
-    dm1: [
-        { id: 'm1', from: 'peer', text: '謝謝你的推薦～很喜歡！', time: '昨天 下午 5:00' },
-        { id: 'm2', from: 'me', text: '太好了！穿出去一定很美 😊', time: '昨天 下午 5:10' },
-    ],
-    dm2: [
-        { id: 'm1', from: 'peer', text: '請問有在收古著嗎？', time: '2 天前 下午 3:00' },
-    ],
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 工具函式
@@ -587,31 +517,156 @@ function ZoneGroupHeader({ zone, isExpanded, onToggle }) {
         </button>
     )
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// 資料正規化工具
+// ─────────────────────────────────────────────────────────────────────────────
+
+function msgTime(dateStr) {
+    if (!dateStr) return ''
+    return new Date(dateStr).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** 後端 ChatMessage → UI Bubble msg */
+function normalizeMsg(m, myUserID) {
+    return {
+        id: m.id,
+        from: m.sender_id === myUserID ? 'me' : (m.type === 'system' ? 'system' : 'peer'),
+        text: m.content,
+        time: msgTime(m.created_at),
+    }
+}
+
+/** 後端 Chat（DM）→ sidebar list item */
+function normalizeDMChat(chat, myUserID) {
+    const peer = (chat.participants || []).find(p => p.user_id !== myUserID)
+    const peerProfile = peer?.profile
+    return {
+        id: chat.id,
+        peer: peerProfile?.username || peerProfile?.display_name || '對方',
+        avatarUrl: peerProfile?.avatar_url || null,
+        avatarColor: '#C4A882',
+        lastMsg: '',
+        time: '',
+        unread: chat.unread_count ?? 0,
+    }
+}
+
+/** 後端 Chat（Zone）→ zone group 結構 */
+function normalizeZoneChats(chats, myUserID) {
+    const zoneMap = {}
+    for (const chat of chats) {
+        const zoneId = chat.zone_id || 'unknown'
+        const zoneTitle = chat.zone_title || '私藏'
+        const peer = (chat.participants || []).find(p => p.user_id !== myUserID)
+        const peerProfile = peer?.profile
+        if (!zoneMap[zoneId]) {
+            zoneMap[zoneId] = {
+                zoneId,
+                zoneTitle,
+                totalSlots: chat.zone_total_slots ?? 0,
+                collectorCount: chat.zone_collector_count ?? 0,
+                chats: [],
+            }
+        }
+        zoneMap[zoneId].chats.push({
+            id: chat.id,
+            peer: peerProfile?.username || peerProfile?.display_name || '對方',
+            avatarUrl: peerProfile?.avatar_url || null,
+            avatarColor: '#8C8479',
+            lastMsg: '',
+            status: '對話中',
+            statusColor: '#C4A882',
+            role: '買家',
+            tx: null,
+            unread: chat.unread_count ?? 0,
+        })
+    }
+    return Object.values(zoneMap)
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Chat Page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Chat() {
-    const VIEWER_ROLE = 'seller' // 目前登入者角色（實際應從 auth 取得）
+    const { currentUser } = useAuth()
+    const myUserID = currentUser?.user_id || ''
+    const VIEWER_ROLE = 'seller' // TODO: 從 Zone chat 的參與者角色動態判斷
 
     const isMobile = useIsMobile()
     const navigate = useNavigate()
     const [mobileView, setMobileView] = useState('list') // 'list' | 'chat'
 
     const [sidebarTab, setSidebarTab] = useState('zone')
-    const [selectedId, setSelectedId] = useState('zc2') // 預選 zc2（已付款範例）
+    const [selectedId, setSelectedId] = useState(null)
     const [input, setInput] = useState('')
-    const [messages, setMessages] = useState(INITIAL_MESSAGES)
-    const [zoneChats, setZoneChats] = useState(INITIAL_ZONE_CHATS)
-    const [expandedZones, setExpandedZones] = useState(() => new Set(INITIAL_ZONE_CHATS.map(z => z.zoneId)))
+    const [messages, setMessages] = useState({})      // chatId -> msg[]
+    const [loadingMsgs, setLoadingMsgs] = useState(false)
+    const [zoneChats, setZoneChats] = useState([])    // 後端資料後正規化
+    const [dmChats, setDmChats] = useState([])        // 後端資料後正規化
+    const [loadingList, setLoadingList] = useState(false)
+    const [expandedZones, setExpandedZones] = useState(new Set())
 
     // Dialog/Modal 狀態
-    const [confirmCollector, setConfirmCollector] = useState(null)  // { chatId, zoneId, peerName }
-    const [confirmTx, setConfirmTx] = useState(null)                // { chatId, zoneId, action, label, desc }
-    const [reviewTarget, setReviewTarget] = useState(null)          // { chatId, peerName }
+    const [confirmCollector, setConfirmCollector] = useState(null)
+    const [confirmTx, setConfirmTx] = useState(null)
+    const [reviewTarget, setReviewTarget] = useState(null)
     const [closedZone, setClosedZone] = useState(null)
 
     const bottomRef = useRef(null)
+
+    // ── 載入 Zone / DM 列表 ───────────────────────────────────────────────────
+    const loadList = useCallback(async () => {
+        setLoadingList(true)
+        try {
+            if (sidebarTab === 'zone') {
+                const res = await chatApi.getZoneChats()
+                const raw = res.data.data || []
+                const normalized = normalizeZoneChats(raw, myUserID)
+                setZoneChats(normalized)
+                setExpandedZones(new Set(normalized.map(z => z.zoneId)))
+                if (!selectedId && normalized.length > 0 && normalized[0].chats.length > 0) {
+                    setSelectedId(normalized[0].chats[0].id)
+                }
+            } else {
+                const res = await chatApi.getDmChats()
+                const raw = res.data.data || []
+                const normalized = raw.map(c => normalizeDMChat(c, myUserID))
+                setDmChats(normalized)
+                if (!selectedId && normalized.length > 0) {
+                    setSelectedId(normalized[0].id)
+                }
+            }
+        } catch (e) {
+            console.error('載入聊天列表失敗', e)
+        } finally {
+            setLoadingList(false)
+        }
+    }, [sidebarTab, myUserID, selectedId])
+
+    useEffect(() => {
+        if (myUserID) loadList()
+    }, [sidebarTab, myUserID]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── 切換聊天室：載入訊息 + 標記已讀 ─────────────────────────────────────
+    const loadMessages = useCallback(async (chatId) => {
+        if (!chatId) return
+        setLoadingMsgs(true)
+        try {
+            const res = await chatApi.getMessages(chatId)
+            const raw = res.data.data || []
+            setMessages(prev => ({ ...prev, [chatId]: raw.map(m => normalizeMsg(m, myUserID)) }))
+            chatApi.markRead(chatId).catch(() => { })
+        } catch (e) {
+            console.error('載入訊息失敗', e)
+        } finally {
+            setLoadingMsgs(false)
+        }
+    }, [myUserID])
+
+    useEffect(() => {
+        if (selectedId) loadMessages(selectedId)
+    }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
 
     // ── Derived ──────────────────────────────────────────────────────────────
     function findZoneChat(id) {
@@ -624,7 +679,7 @@ export default function Chat() {
 
     const currentMsgs = messages[selectedId] || []
     const zoneChatMeta = findZoneChat(selectedId)
-    const dmChatMeta = MOCK_DM_CHATS.find(d => d.id === selectedId)
+    const dmChatMeta = dmChats.find(d => d.id === selectedId)
     const activeChatMeta = zoneChatMeta?.chat || dmChatMeta
     const peerColor = activeChatMeta?.avatarColor || '#C4A882'
 
@@ -632,22 +687,29 @@ export default function Chat() {
     const canSetCollector = isZoneChat && zoneChatMeta.chat.status === '對話中'
     const hasTransaction = isZoneChat && !!zoneChatMeta.chat.tx
 
-    // ── 傳送訊息 ─────────────────────────────────────────────────────────────
-    const handleSend = () => {
+    // ── 傳送訊息（API） ────────────────────────────────────────────────────────
+    const handleSend = async () => {
         const text = input.trim()
-        if (!text) return
-        const newMsg = { id: Date.now().toString(), from: 'me', text, time: nowTime() }
-        setMessages(prev => ({ ...prev, [selectedId]: [...(prev[selectedId] || []), newMsg] }))
+        if (!text || !selectedId) return
+        // 樂觀更新
+        const optimisticMsg = { id: `tmp-${Date.now()}`, from: 'me', text, time: nowTime() }
+        setMessages(prev => ({ ...prev, [selectedId]: [...(prev[selectedId] || []), optimisticMsg] }))
         setInput('')
+        try {
+            await chatApi.sendMessage(selectedId, text)
+        } catch (e) {
+            console.error('送出訊息失敗', e)
+        }
     }
 
     const selectTab = (tab) => {
         setSidebarTab(tab)
-        setSelectedId(tab === 'zone' ? 'zc1' : 'dm1')
+        setSelectedId(null)
         if (isMobile) setMobileView('list')
     }
 
     const toggleZone = (zoneId) => {
+
         setExpandedZones(prev => {
             const next = new Set(prev)
             next.has(zoneId) ? next.delete(zoneId) : next.add(zoneId)
@@ -716,9 +778,9 @@ export default function Chat() {
         if (cfg) setConfirmTx({ chatId, zoneId, action, ...cfg })
     }
 
-    const executeTxAction = () => {
+    const executeTxAction = async () => {
         if (!confirmTx) return
-        const { chatId, zoneId, action } = confirmTx
+        const { chatId, action } = confirmTx
         setConfirmTx(null)
 
         const nextStatus = action.split('→')[1]
@@ -728,21 +790,24 @@ export default function Chat() {
             completed: '🎉 交易完成！感謝你的參與',
         }
 
-        setZoneChats(prev => prev.map(z => ({
-            ...z,
-            chats: z.chats.map(c => c.id === chatId
-                ? { ...c, tx: { ...c.tx, status: nextStatus, updatedAt: Date.now() } }
-                : c
-            ),
-        })))
-
-        addSysMsg(chatId, sysTexts[nextStatus])
-
-        // 完成後直接彈評價
-        if (nextStatus === 'completed') {
-            setTimeout(() => {
-                setReviewTarget({ chatId, peerName: zoneChatMeta?.chat.peer || '' })
-            }, 600)
+        try {
+            await chatApi.updateTransaction(chatId, nextStatus)
+            // 樂觀更新本地 zone chat tx 狀態
+            setZoneChats(prev => prev.map(z => ({
+                ...z,
+                chats: z.chats.map(c => c.id === chatId
+                    ? { ...c, tx: { ...c.tx, status: nextStatus, updatedAt: Date.now() } }
+                    : c
+                ),
+            })))
+            addSysMsg(chatId, sysTexts[nextStatus])
+            if (nextStatus === 'completed') {
+                setTimeout(() => {
+                    setReviewTarget({ chatId, peerName: findZoneChat(chatId)?.chat.peer || '' })
+                }, 600)
+            }
+        } catch (e) {
+            console.error('交易更新失敗', e)
         }
     }
 
@@ -844,24 +909,30 @@ export default function Chat() {
                         </div>
                     ))}
 
-                    {sidebarTab === 'dm' && MOCK_DM_CHATS.map(d => (
+                    {sidebarTab === 'dm' && dmChats.length === 0 && !loadingList && (
+                        <div style={{ padding: '40px 20px', textAlign: 'center', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 13 }}>
+                            還沒有私訊
+                        </div>
+                    )}
+
+                    {sidebarTab === 'dm' && dmChats.map(d => (
                         <ChatItem
                             key={d.id}
-                            avatarLetter={d.peer[0].toUpperCase()}
+                            avatarLetter={(d.peer || '?')[0].toUpperCase()}
                             avatarColor={d.avatarColor}
-                            title={d.peer} subtitle={d.lastMsg}
-                            badge={d.time} badgeColor="#D4CCC4"
+                            title={d.peer} subtitle={d.lastMsg || ''}
+                            badge={d.time || ''} badgeColor="#D4CCC4"
                             unread={d.unread || 0}
                             selected={selectedId === d.id}
                             onClick={() => {
                                 setSelectedId(d.id)
-                                d.unread = 0  // mock 直接清零
                                 if (isMobile) setMobileView('chat')
                             }}
                         />
                     ))}
                 </div>
             </div>
+
 
             {/* ═══ CHAT MAIN ═══ */}
             {activeChatMeta && (
