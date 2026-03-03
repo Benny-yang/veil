@@ -61,9 +61,10 @@ func Load() (*Config, error) {
 		_ = godotenv.Load(".env")
 	}
 
+	// NOTE: 對應 chat/review handler 中的分鐘制（測試模式 = 5 分鐘）
 	txTimeoutDays := map[string]int{
-		"pending":  3,
-		"shipping": 10,
+		"pending":  5,
+		"shipping": 5,
 		"received": 5,
 	}
 	if raw := os.Getenv("TX_TIMEOUT_DAYS"); raw != "" {

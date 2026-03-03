@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"net/http"
 	"regexp"
 	"time"
 
@@ -122,20 +121,14 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	// 產生 email 驗證 token
-	tokenBytes := make([]byte, 32)
-	rand.Read(tokenBytes)
-	verifyToken := hex.EncodeToString(tokenBytes)
-	verifyExpiry := time.Now().Add(24 * time.Hour)
-
 	// 建立 User + UserProfile（transaction）
+	// NOTE: EmailVerified 直接設 true，跳過 email 驗證流程（測試模式）
 	var user model.User
 	err = db.Transaction(func(tx *gorm.DB) error {
 		user = model.User{
-			Email:                req.Email,
-			PasswordHash:         string(hash),
-			EmailVerifyToken:     &verifyToken,
-			EmailVerifyExpiresAt: &verifyExpiry,
+			Email:         req.Email,
+			PasswordHash:  string(hash),
+			EmailVerified: true,
 		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
@@ -155,14 +148,20 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	// 寄驗證信（非同步）
-	if h.emailSvc != nil {
-		go h.emailSvc.SendEmailVerification(user.Email, verifyToken, h.baseURL)
+	// 直接簽發 token，前端收到即可進入 app
+	var profile model.UserProfile
+	database.DB.Where("user_id = ?", user.ID).First(&profile)
+
+	tokens, err := h.issueTokens(user.ID)
+	if err != nil {
+		response.InternalError(c)
+		return
 	}
 
-	c.JSON(http.StatusAccepted, response.Response{
-		Success: true,
-		Data:    gin.H{"message": "帳號建立成功，請至信箱收取驗證信完成驗證後即可登入"},
+	response.OK(c, TokenResponse{
+		AccessToken:  tokens[0],
+		RefreshToken: tokens[1],
+		User:         toUserSummary(&user, &profile),
 	})
 }
 
@@ -191,11 +190,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// 封鎖未驗證信箱
-	if !user.EmailVerified {
-		response.Forbidden(c, "EMAIL_NOT_VERIFIED", "請先至信箱完成驗證後再登入")
-		return
-	}
+	// NOTE: 已略過 email 驗證檢查（測試模式）
 
 	tokens, err := h.issueTokens(user.ID)
 	if err != nil {

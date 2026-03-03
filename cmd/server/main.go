@@ -215,8 +215,8 @@ func initSystemConfigs(cfg *config.Config) {
 	defaultConfigs := []model.SystemConfig{
 		{
 			Key:         "tx_timeout_days",
-			Value:       `{"pending":3,"shipping":10,"received":5}`,
-			Description: "各交易狀態的超時天數（超時後可評價）",
+			Value:       `{"pending":5,"shipping":5,"received":5}`,
+			Description: "各交易狀態的超時分鐘數（測試模式 = 5 分鐘，正式環境請改為天數）",
 		},
 		{
 			Key:         "credit_score_init",

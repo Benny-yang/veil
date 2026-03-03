@@ -195,13 +195,14 @@ func (h *Handler) isParticipant(userID, chatID string) bool {
 	return count > 0
 }
 
+// isTimedOut：map 的值單位為分鐘（測試模式 = 5 分鐘）
 func (h *Handler) isTimedOut(tx *model.Transaction) bool {
-	days, ok := h.txTimeoutDays[string(tx.Status)]
+	minutes, ok := h.txTimeoutDays[string(tx.Status)]
 	if !ok {
 		return false
 	}
-	elapsed := time.Since(tx.StatusUpdatedAt).Hours() / 24
-	return elapsed >= float64(days)
+	elapsed := time.Since(tx.StatusUpdatedAt).Minutes()
+	return elapsed >= float64(minutes)
 }
 
 // GetTxTimeoutDays 從 system_configs 讀取超時設定

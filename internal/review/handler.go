@@ -122,15 +122,16 @@ func (h *Handler) CreateReview(c *gin.Context) {
 	response.Created(c, review)
 }
 
+// canReview：map 的值單位為分鐘（測試模式 = 5 分鐘）
 func (h *Handler) canReview(tx *model.Transaction) bool {
 	if tx.Status == model.TxCompleted {
 		return true
 	}
-	days, ok := h.txTimeoutDays[string(tx.Status)]
+	minutes, ok := h.txTimeoutDays[string(tx.Status)]
 	if !ok {
 		return false
 	}
-	return time.Since(tx.StatusUpdatedAt).Hours()/24 >= float64(days)
+	return time.Since(tx.StatusUpdatedAt).Minutes() >= float64(minutes)
 }
 
 func updateRating(userID string) {
