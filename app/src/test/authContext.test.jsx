@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render, act, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { AuthProvider, useAuth } from '../context/AuthContext'
+import * as apiModule from '../services/api'
 
 // Mock authApi
 vi.mock('../services/api', () => ({
     authApi: {
         logout: vi.fn().mockResolvedValue({}),
+        me: vi.fn().mockRejectedValue({ response: { status: 401 } }),
     },
 }))
 
@@ -33,7 +35,7 @@ function AuthConsumer({ onMount }) {
     return null
 }
 
-function renderWithAuth(onMount) {
+function renderWithAuth() {
     let result
     render(
         <MemoryRouter>
@@ -49,17 +51,21 @@ function renderWithAuth(onMount) {
 describe('AuthContext', () => {
     beforeEach(() => {
         localStorageMock.clear()
+        vi.clearAllMocks()
+        // me() 預設回傳 401
+        apiModule.authApi.me.mockRejectedValue({ response: { status: 401 } })
     })
 
-    it('初始 currentUser 為 null（無 localStorage 資料）', () => {
+    it('初始 currentUser 為 null（無 localStorage token）', async () => {
         const ctx = renderWithAuth()
-        expect(ctx.currentUser).toBeNull()
+        await waitFor(() => expect(ctx.currentUser).toBeNull())
     })
 
-    it('login() 設定 currentUser 並存入 localStorage', () => {
+    it('login() 設定 currentUser 並存入 localStorage', async () => {
         const ctx = renderWithAuth()
+        await waitFor(() => expect(ctx.currentUser).toBeNull()) // 等初始化完成
+
         const fakeUser = { id: '1', username: 'benny', avatar_url: null }
-
         act(() => {
             ctx.login(
                 { accessToken: 'access-tok', refreshToken: 'refresh-tok' },
@@ -72,26 +78,27 @@ describe('AuthContext', () => {
         expect(JSON.parse(localStorageMock.getItem('veil_user'))).toEqual(fakeUser)
     })
 
-    it('updateProfile() 部分更新 currentUser 並同步 localStorage', () => {
+    it('updateProfile() 部分更新 currentUser 並同步 localStorage', async () => {
         const ctx = renderWithAuth()
-        const fakeUser = { id: '1', username: 'benny', avatar_url: null }
+        await waitFor(() => expect(ctx.currentUser).toBeNull())
 
+        const fakeUser = { id: '1', username: 'benny', avatar_url: null }
         act(() => {
             ctx.login({ accessToken: 'tok', refreshToken: 'ref' }, fakeUser)
         })
-
         act(() => {
             ctx.updateProfile({ avatar_url: 'https://cdn.example.com/avatar.png' })
         })
 
         const stored = JSON.parse(localStorageMock.getItem('veil_user'))
         expect(stored.avatar_url).toBe('https://cdn.example.com/avatar.png')
-        expect(stored.username).toBe('benny') // 其他欄位保留
+        expect(stored.username).toBe('benny')
     })
 
-    it('updateProfile() 在無登入狀態下不更新（currentUser 為 null）', () => {
+    it('updateProfile() 在無登入狀態下不更新（currentUser 為 null）', async () => {
         const ctx = renderWithAuth()
-        // 不呼叫 login，currentUser 為 null
+        await waitFor(() => expect(ctx.currentUser).toBeNull())
+
         act(() => {
             ctx.updateProfile({ avatar_url: 'https://cdn.example.com/avatar.png' })
         })
@@ -99,9 +106,11 @@ describe('AuthContext', () => {
         expect(localStorageMock.getItem('veil_user')).toBeNull()
     })
 
-    it('loadUserFromStorage：有 localStorage 資料時初始化 currentUser', () => {
+    it('有效 token：authApi.me() 成功時設定 currentUser', async () => {
         const fakeUser = { id: '1', username: 'benny', avatar_url: 'https://img.example.com/a.png' }
-        localStorageMock.setItem('veil_user', JSON.stringify(fakeUser))
+        apiModule.authApi.me.mockResolvedValueOnce({ data: { data: fakeUser } })
+
+        localStorageMock.setItem('veil_access_token', 'valid-token')
 
         let ctx
         render(
@@ -111,6 +120,7 @@ describe('AuthContext', () => {
                 </AuthProvider>
             </MemoryRouter>
         )
-        expect(ctx.currentUser).toEqual(fakeUser)
+
+        await waitFor(() => expect(ctx?.currentUser?.username).toBe('benny'))
     })
 })

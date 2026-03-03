@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authApi } from '../services/api'
 
@@ -16,7 +16,34 @@ function loadUserFromStorage() {
 
 export function AuthProvider({ children }) {
     const navigate = useNavigate()
-    const [currentUser, setCurrentUser] = useState(loadUserFromStorage)
+    const [currentUser, setCurrentUser] = useState(null)
+    const [isLoading, setIsLoading] = useState(true)   // 驗證 token 期間顯示 loading
+
+    /** App 啟動時驗證 token 是否仍然有效 */
+    useEffect(() => {
+        const token = localStorage.getItem('veil_access_token')
+        if (!token) {
+            // 沒有 token，直接結束 loading（未登入）
+            setCurrentUser(null)
+            setIsLoading(false)
+            return
+        }
+        // 呼叫後端驗證 token，取得最新的 user 資料
+        authApi.me()
+            .then(res => {
+                const user = res.data.data || res.data
+                setCurrentUser(user)
+                localStorage.setItem('veil_user', JSON.stringify(user))
+            })
+            .catch(() => {
+                // token 無效或過期：清除所有資料
+                localStorage.removeItem('veil_access_token')
+                localStorage.removeItem('veil_refresh_token')
+                localStorage.removeItem('veil_user')
+                setCurrentUser(null)
+            })
+            .finally(() => setIsLoading(false))
+    }, [])
 
     /** 登入成功後呼叫：儲存 tokens + user，更新 state */
     const login = useCallback((tokens, user) => {
@@ -49,7 +76,7 @@ export function AuthProvider({ children }) {
     }, [navigate])
 
     return (
-        <AuthContext.Provider value={{ currentUser, login, logout, updateProfile }}>
+        <AuthContext.Provider value={{ currentUser, isLoading, login, logout, updateProfile }}>
             {children}
         </AuthContext.Provider>
     )

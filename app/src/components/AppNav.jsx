@@ -339,6 +339,16 @@ const MOBILE_NAV_ITEMS = [
 
 function MobileBottomNav() {
     const location = useLocation()
+    const { currentUser } = useAuth()
+    const username = currentUser?.username || ''
+
+    const navItems = [
+        { icon: LayoutGrid, to: '/home', label: '首頁' },
+        { icon: Search, to: '/explore', label: '探索' },
+        { icon: Bookmark, to: '/collection', label: '私藏' },
+        { icon: Mail, to: '/chat', label: '訊息', hasBadge: true },
+        { icon: User, to: username ? `/profile/${username}` : '/profile', label: '我' },
+    ]
 
     return (
         <nav style={{
@@ -349,11 +359,11 @@ function MobileBottomNav() {
             zIndex: 1000,
             paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
-            {MOBILE_NAV_ITEMS.map(({ icon: Icon, to, label, hasBadge }) => {
-                const isActive = location.pathname === to
+            {navItems.map(({ icon: Icon, to, label, hasBadge }) => {
+                const isActive = location.pathname.startsWith(to === '/home' ? to : to)
                 const color = isActive ? '#C4A882' : '#8C8479'
                 return (
-                    <Link key={to} to={to} style={{ textDecoration: 'none' }}>
+                    <Link key={label} to={to} style={{ textDecoration: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 12 }}>
                             <Icon size={22} strokeWidth={1.5} color={color} />
                             {hasBadge && <ChatBadge />}
@@ -467,7 +477,7 @@ function UserMenu() {
     const MENU_ITEMS = [
         {
             icon: User, label: '我的主頁',
-            onClick: () => { setOpen(false); navigate('/profile') },
+            onClick: () => { setOpen(false); navigate(displayName ? `/profile/${displayName}` : '/profile') },
         },
         {
             icon: Bookmark, label: '我的私藏',

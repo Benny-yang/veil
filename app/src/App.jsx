@@ -19,9 +19,16 @@ import Onboarding from './pages/Onboarding'
 
 /** 需要登入才能進入的路由 */
 function ProtectedRoute({ children }) {
-  const { currentUser } = useAuth()
-  const token = localStorage.getItem('veil_access_token')
-  if (!currentUser && !token) {
+  const { currentUser, isLoading } = useAuth()
+  // 等待 token 驗證完成才渲染（避免設備随機跳轉）
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F1EC' }}>
+        <span style={{ fontSize: 13, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>載入中⋯</span>
+      </div>
+    )
+  }
+  if (!currentUser) {
     return <Navigate to="/auth" replace />
   }
   return children
