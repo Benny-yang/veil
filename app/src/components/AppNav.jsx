@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, X, User, LogOut } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import { useAuth } from '../context/AuthContext'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock：未讀訊息總數（實際應從全域狀態/API 取得）
@@ -454,6 +455,7 @@ function UserMenu() {
     const [open, setOpen] = useState(false)
     const ref = useRef(null)
     const navigate = useNavigate()
+    const { logout } = useAuth()
 
     useEffect(() => {
         if (!open) return
@@ -533,7 +535,7 @@ function UserMenu() {
                     <div style={{ height: 1, backgroundColor: '#F0EBE3', margin: '2px 0' }} />
 
                     {/* 登出 */}
-                    <button onClick={() => { setOpen(false); navigate('/auth') }} style={{
+                    <button onClick={() => { setOpen(false); logout() }} style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                         padding: '11px 16px', border: 'none', backgroundColor: 'transparent',
                         cursor: 'pointer', fontSize: 13, color: '#C0392B',

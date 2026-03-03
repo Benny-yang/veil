@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Mail } from 'lucide-react'
+import { authApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 const font = 'Noto Sans TC, sans-serif'
 const logoFont = 'Cormorant Garamond, serif'
@@ -171,17 +173,23 @@ function LoginForm({ onBack, onSuccess }) {
     const [showPwd, setShowPwd] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const { login } = useAuth()
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!email || !password) { setError('請填寫所有欄位'); return }
         setLoading(true)
         setError('')
-        // 模擬 API 呼叫
-        setTimeout(() => {
+        try {
+            const res = await authApi.login({ email, password })
+            const { access_token, refresh_token, user } = res.data.data
+            login({ accessToken: access_token, refreshToken: refresh_token }, user)
+            onSuccess(user)
+        } catch (err) {
+            const msg = err.response?.data?.message || '登入失敗，請檢查信箱與密碼'
+            setError(msg)
+        } finally {
             setLoading(false)
-            const isFirstLogin = !localStorage.getItem('veil_has_logged_in')
-            onSuccess({ isFirstLogin })
-        }, 1000)
+        }
     }
 
     return (
@@ -230,30 +238,47 @@ function LoginForm({ onBack, onSuccess }) {
 // ── Step: Register Form ──────────────────────────────────────────────────────
 function RegisterForm({ onBack, onSuccess }) {
     const [email, setEmail] = useState('')
+    const [username, setUsername] = useState('')
+    const [displayName, setDisplayName] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [showPwd, setShowPwd] = useState(false)
     const [showCpwd, setShowCpwd] = useState(false)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
+    const { login } = useAuth()
 
-    const handleSubmit = () => {
-        if (!email || !password || !confirmPassword) { setError('請填寫所有欄位'); return }
+    const handleSubmit = async () => {
+        if (!email || !username || !displayName || !password || !confirmPassword) {
+            setError('請填寫所有欄位'); return
+        }
         if (password !== confirmPassword) { setError('兩次密碼不一致'); return }
         if (password.length < 8) { setError('密碼至少 8 個字元'); return }
         setLoading(true)
         setError('')
-        setTimeout(() => { setLoading(false); onSuccess({ email }) }, 1000)
+        try {
+            const res = await authApi.register({ email, username, display_name: displayName, password })
+            const { access_token, refresh_token, user } = res.data.data
+            login({ accessToken: access_token, refreshToken: refresh_token }, user)
+            onSuccess(user)
+        } catch (err) {
+            const msg = err.response?.data?.message || '註冊失敗，請稍後再試'
+            setError(msg)
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
-        <div style={{ ...modalStyle, gap: 20, padding: '36px 48px' }}>
+        <div style={{ ...modalStyle, gap: 16, padding: '36px 48px' }}>
             <button onClick={onBack} style={{ alignSelf: 'flex-start', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#8C8479', fontFamily: font, padding: 0 }}>← 返回</button>
 
             <div style={{ fontSize: 32, fontFamily: logoFont, fontWeight: 300, color: '#1C1A18', letterSpacing: 6 }}>VEIL</div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%' }}>
                 <InputField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+                <InputField label="帳號（個人專屬連結）" value={username} onChange={e => setUsername(e.target.value)} placeholder="只能使用英文、數字、底線" />
+                <InputField label="顯示名稱" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="將公開願示的名稱" />
                 <InputField
                     label="密碼（至少 8 個字元）" type={showPwd ? 'text' : 'password'} value={password}
                     onChange={e => setPassword(e.target.value)} placeholder="請設定密碼"
@@ -320,16 +345,15 @@ function EmailSentView({ email, onResend, onBackToLogin }) {
 // ── Main Auth Page ────────────────────────────────────────────────────────────
 export default function Auth() {
     const navigate = useNavigate()
-    const [step, setStep] = useState('welcome') // welcome | login | register | emailSent
-    const [registeredEmail, setRegisteredEmail] = useState('')
+    const [step, setStep] = useState('welcome') // welcome | login | register
 
-    const handleLoginSuccess = () => {
-        navigate('/onboarding')
-    }
-
-    const handleRegisterSuccess = ({ email }) => {
-        setRegisteredEmail(email)
-        setStep('emailSent')
+    /** 登入/註冊成功後：根據 onboarding_completed 決定導頁 */
+    const handleAuthSuccess = (user) => {
+        if (user?.onboarding_completed) {
+            navigate('/home')
+        } else {
+            navigate('/onboarding')
+        }
     }
 
     const handleGuest = () => navigate('/home')
@@ -340,7 +364,6 @@ export default function Auth() {
             backgroundImage: 'radial-gradient(ellipse at top, #E8DDD0 0%, #F2EDE6 60%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-            {/* Blurred background overlay feel */}
             <div style={overlayStyle}>
                 {step === 'welcome' && (
                     <WelcomePopup
@@ -352,19 +375,13 @@ export default function Auth() {
                 {step === 'login' && (
                     <LoginForm
                         onBack={() => setStep('welcome')}
-                        onSuccess={handleLoginSuccess}
+                        onSuccess={handleAuthSuccess}
                     />
                 )}
                 {step === 'register' && (
                     <RegisterForm
                         onBack={() => setStep('welcome')}
-                        onSuccess={handleRegisterSuccess}
-                    />
-                )}
-                {step === 'emailSent' && (
-                    <EmailSentView
-                        email={registeredEmail}
-                        onBackToLogin={() => setStep('login')}
+                        onSuccess={handleAuthSuccess}
                     />
                 )}
             </div>
