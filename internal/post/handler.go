@@ -16,10 +16,10 @@ type Handler struct{}
 
 func NewHandler() *Handler { return &Handler{} }
 
-// GET /feed
+// GET /feed — 隨機取全站貼文，每次刷新順序不同
 func (h *Handler) GetFeed(c *gin.Context) {
 	var posts []model.Post
-	database.DB.Preload("Images").Preload("Tags").Order("created_at DESC").Limit(30).Find(&posts)
+	database.DB.Preload("Images").Preload("Tags").Order("RAND()").Limit(60).Find(&posts)
 
 	// 批次撈作者資料（避免 N+1）
 	userIDs := make([]string, len(posts))
@@ -43,7 +43,7 @@ func (h *Handler) GetFeed(c *gin.Context) {
 }
 
 type CreatePostRequest struct {
-	Description string   `json:"description" binding:"required"`
+	Description string   `json:"description"`
 	ImageURLs   []string `json:"image_urls" binding:"required,min=1"`
 }
 
