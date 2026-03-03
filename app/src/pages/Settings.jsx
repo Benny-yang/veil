@@ -308,7 +308,6 @@ function SmsModal({ onClose, initialPhone, onSuccess }) {
 const SIDEBAR_ITEMS = [
     { key: 'profile', label: '個人資料' },
     { key: 'account', label: '帳號管理' },
-    { key: 'verify', label: '實名驗證' },
     { key: 'terms', label: '服務條款' },
     { key: 'privacy', label: '隱私權條款' },
     { key: 'contact', label: '聯絡我們' },
@@ -806,7 +805,6 @@ export default function Settings() {
                     )}
 
                     {activeKey === 'account' && <AccountSection email={meData?.email} username={meData?.profile?.username} />}
-                    {activeKey === 'verify' && <PlaceholderSection title="實名驗證" desc="實名驗證功能即將推出" />}
                     {activeKey === 'terms' && <TermsSection />}
                     {activeKey === 'privacy' && <PrivacySection />}
                     {activeKey === 'contact' && <PlaceholderSection title="聯絡我們" desc="如有問題，請來信 support@veil.tw" />}
