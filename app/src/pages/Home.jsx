@@ -16,7 +16,7 @@ const MOCK_POSTS = [
         ],
         imageHeight: 260,
         likes: 24, comments: 6, column: 0,
-        desc: '這件手工真絲洋裝帶著些許週末的慵懶氣息，穿上它你就是那個房間裡最有故事的人。',
+        desc: '這件手工真絲洋裝帶著些許週末的慵懶氣息，穿上它你就是那個房間裡最有故事的人。 #真絲 #洋裝 #古著 #二手',
         tags: ['真絲', '洋裝', '二手'],
         mockComments: [
             { user: 'velvet_noir', text: '想了解這件的版型，請問是修身嗎？', time: '1小時前' },
@@ -33,7 +33,7 @@ const MOCK_POSTS = [
         ],
         imageHeight: 200,
         likes: 42, comments: 11, column: 1,
-        desc: '皮質背心，穿過三季，依然如新。對的人才懂它的好。',
+        desc: '皮質背心，穿過三季，依然如新。對的人才懂它的好。 #皮質背心 #復古 #神團 #二手潮',
         tags: ['皮革', '背心', '秋冬'],
         mockComments: [
             { user: 'atelier_muse', text: '請問有S號嗎？', time: '30分鐘前' },
@@ -69,7 +69,7 @@ const MOCK_POSTS = [
         image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=800',
         imageHeight: 240,
         likes: 33, comments: 7, column: 0,
-        desc: '經典風衣，永不過時的選擇。這一件陪了我三個秋天。',
+        desc: '經典風衣，永不過時的選擇。這一件陪了我三個秋天。 #風衣 #經典 #秋填 #二前',
         tags: ['風衣', '經典', '秋冬'],
         mockComments: [
             { user: 'silk_archive', text: '哪個品牌？', time: '2小時前' },

@@ -191,12 +191,12 @@ function WorkPhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function AddWorkModal({ onClose }) {
     const [values, setValues] = React.useState({
-        title: '', desc: '', tags: '', photos: [], coverId: '',
+        desc: '', photos: [], coverId: '',
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
     const focus = e => e.target.style.borderColor = '#C4A882'
     const blur = e => e.target.style.borderColor = '#E8DDD0'
-    const canSubmit = values.title.trim() && values.photos.length > 0
+    const canSubmit = values.photos.length > 0
 
     return (
         <div onClick={onClose} style={{
@@ -222,19 +222,10 @@ function AddWorkModal({ onClose }) {
                 {/* 表單 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-                    {/* 標題 */}
-                    <div>
-                        <WFieldLabel required>作品標題</WFieldLabel>
-                        <input value={values.title} onChange={e => onChange('title', e.target.value)}
-                            placeholder="例：春季復古洋裝｜手工真絲"
-                            style={workInputStyle} onFocus={focus} onBlur={blur} />
-                    </div>
-
-                    {/* 描述 */}
                     <div>
                         <WFieldLabel>作品描述</WFieldLabel>
                         <textarea value={values.desc} onChange={e => onChange('desc', e.target.value)}
-                            placeholder="描述這件作品的故事、材質、狀況…"
+                            placeholder="描述這件作品的故事、材質、狀況⋯ 可加上 #古著 #復古 等標籤"
                             rows={3} style={{ ...workInputStyle, resize: 'none' }}
                             onFocus={focus} onBlur={blur} />
                     </div>
@@ -253,18 +244,6 @@ function AddWorkModal({ onClose }) {
                         />
                     </div>
 
-                    <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
-
-                    {/* 標籤 */}
-                    <div>
-                        <WFieldLabel>標籤</WFieldLabel>
-                        <input value={values.tags} onChange={e => onChange('tags', e.target.value)}
-                            placeholder="如：洋裝, 復古, 二手"
-                            style={workInputStyle} onFocus={focus} onBlur={blur} />
-                        <div style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 4 }}>
-                            用逗號分隔多個標籤
-                        </div>
-                    </div>
                 </div>
 
                 {/* 操作按鈕 */}

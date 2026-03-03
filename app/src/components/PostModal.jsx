@@ -24,6 +24,16 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
     const images = item?.images?.length ? item.images : (item?.image ? [item.image] : [])
     if (!item) return null
 
+    // ── IG 風格：#xxx 渲染為金色 inline hashtag ────────────
+    const renderCaption = (text) => {
+        if (!text) return null
+        return text.split(/(#[\w\u4e00-\u9fa5]+)/g).map((part, i) =>
+            part.startsWith('#')
+                ? <span key={i} style={{ color: '#C4A882', fontWeight: 500, cursor: 'pointer' }}>{part}</span>
+                : part
+        )
+    }
+
     const submitComment = () => {
         const text = comment.trim()
         if (!text) return
@@ -165,16 +175,9 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
                         </div>
                     </div>
 
-                    {/* 說明 + 標籤 */}
+                    {/* 說明（IG 風格：# 保留在內文，金色高亮） */}
                     <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid #F0EBE3', backgroundColor: '#FFFFFF' }}>
-                        <p style={{ margin: 0, fontSize: 13, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.7 }}>{item.desc}</p>
-                        {item.tags?.length > 0 && (
-                            <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {item.tags.map(tag => (
-                                    <span key={tag} style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>#{tag}</span>
-                                ))}
-                            </div>
-                        )}
+                        <p style={{ margin: 0, fontSize: 13, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.7 }}>{renderCaption(item.desc)}</p>
                     </div>
 
                     {/* 留言列表（隨頁面滾動） */}
@@ -253,17 +256,8 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
                         </div>
                     </div>
 
-                    {/* 描述 */}
-                    <p style={{ fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14, color: '#3A3531', lineHeight: 1.8, marginBottom: 12 }}>{item.desc}</p>
-
-                    {/* 標籤 */}
-                    {item.tags?.length > 0 && (
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                            {item.tags.map(tag => (
-                                <span key={tag} style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', backgroundColor: '#F5F1EC', padding: '3px 10px', borderRadius: 20 }}>#{tag}</span>
-                            ))}
-                        </div>
-                    )}
+                    {/* 描述（IG 風格：# 保留在內文，金色高亮） */}
+                    <p style={{ fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14, color: '#3A3531', lineHeight: 1.8, marginBottom: 16 }}>{renderCaption(item.desc)}</p>
 
                     {/* 讚 / 留言數 */}
                     <div style={{ display: 'flex', gap: 20, alignItems: 'center', paddingBottom: 14, borderBottom: '1px solid #EDE8E1', marginBottom: 14 }}>
