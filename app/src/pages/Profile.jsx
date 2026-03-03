@@ -151,10 +151,10 @@ function AddWorkModal({ onClose, onSuccess }) {
                 setSaving(false)
                 return
             }
-            // 2. 建立作品
+            // 2. 建立作品（後端欄位：description + image_urls: []string）
             await postApi.createPost({
-                content: values.desc.trim(),
-                images: uploadedImages,
+                description: values.desc.trim(),
+                image_urls: uploadedImages.map(img => img.url),
             })
             onSuccess()
             onClose()
