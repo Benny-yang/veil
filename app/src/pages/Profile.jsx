@@ -502,12 +502,14 @@ export default function Profile() {
         name: profileData.username,
         displayName: profileData.display_name || profileData.username,
         avatar: profileData.avatar_url || null,
+        avatarColor: profileData.avatar_color || '#E8DDD0',
         bio: profileData.bio || '',
-        verified: profileData.is_verified ?? false,
-        followers: profileData.followers_count ?? 0,
+        verified: profileData.is_verified ?? profileData.real_person_verified ?? false,
+        followers: profileData.follower_count ?? profileData.followers_count ?? 0,
         following: profileData.following_count ?? 0,
-        rating: profileData.avg_rating ?? null,
-        ratingCount: profileData.rating_count ?? 0,
+        creditScore: profileData.credit_score ?? 50,
+        rating: profileData.rating ?? 0,
+        dealCount: profileData.deal_count ?? 0,
     }
 
     return (
@@ -523,7 +525,15 @@ export default function Profile() {
                             width: 120, height: 120, borderRadius: '50%',
                             overflow: 'hidden', border: '2px solid #E8DDD0',
                         }}>
-                            <img src={user.avatar} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            {user.avatar ? (
+                                <img src={user.avatar} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                                <div style={{ width: '100%', height: '100%', backgroundColor: user.avatarColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <span style={{ fontSize: 36, fontWeight: 700, color: '#FFFFFF', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1 }}>
+                                        {(user.displayName || user.name || '').charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -609,7 +619,7 @@ export default function Profile() {
                                     <span style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>{label}</span>
                                 </button>
                             ))}
-                            {user.rating != null && (
+                            {user.dealCount > 0 || user.rating > 0 ? (
                                 <button onClick={openRatings} style={{
                                     display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8,
                                     background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -618,7 +628,7 @@ export default function Profile() {
                                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{Number(user.rating).toFixed(1)}</span>
                                     <span style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>評價</span>
                                 </button>
-                            )}
+                            ) : null}
                         </div>
 
                         {/* Bio */}
