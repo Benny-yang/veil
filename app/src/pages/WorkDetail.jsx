@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, ChevronLeft, ChevronRight, ArrowLeft, User } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
-import { workApi, postApi } from '../services/api'
+import { postApi } from '../services/api'
 
 const font = 'Noto Sans TC, sans-serif'
 
