@@ -16,7 +16,7 @@ function loadUserFromStorage() {
 
 export function AuthProvider({ children }) {
     const navigate = useNavigate()
-    const [currentUser, setCurrentUser] = useState(null)
+    const [currentUser, setCurrentUser] = useState(loadUserFromStorage)
     const [isLoading, setIsLoading] = useState(true)   // 驗證 token 期間顯示 loading
 
     /** App 啟動時驗證 token 是否仍然有效 */
@@ -63,20 +63,23 @@ export function AuthProvider({ children }) {
         })
     }, [])
 
-    /** 登出：清除所有本地資料並導回 /auth */
-    const logout = useCallback(async () => {
-        try {
-            await authApi.logout()
-        } catch { /* 無論後端是否成功，前端都清除 */ }
+    /** 清除 session（不導頁）：供訪客模式、強制登出等場景使用 */
+    const clearSession = useCallback(async () => {
+        try { await authApi.logout() } catch { /* 即使後端失敗也繼續清除前端 */ }
         localStorage.removeItem('veil_access_token')
         localStorage.removeItem('veil_refresh_token')
         localStorage.removeItem('veil_user')
         setCurrentUser(null)
+    }, [])
+
+    /** 登出：清除 session 並導回 /auth */
+    const logout = useCallback(async () => {
+        await clearSession()
         navigate('/auth')
-    }, [navigate])
+    }, [clearSession, navigate])
 
     return (
-        <AuthContext.Provider value={{ currentUser, isLoading, login, logout, updateProfile }}>
+        <AuthContext.Provider value={{ currentUser, isLoading, login, logout, clearSession, updateProfile }}>
             {children}
         </AuthContext.Provider>
     )

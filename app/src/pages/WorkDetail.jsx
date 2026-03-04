@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, ChevronLeft, ChevronRight, ArrowLeft, User } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
-import { postApi } from '../services/api'
+import { workApi } from '../services/api'
 import { normalizeWork, normalizeComment } from '../utils/normalizers'
 
 const font = 'Noto Sans TC, sans-serif'
@@ -28,8 +28,8 @@ export default function WorkDetail() {
         setError('')
         try {
             const [workRes, commentsRes] = await Promise.all([
-                postApi.getPost(id),
-                postApi.getComments(id),
+                workApi.getWork(id),
+                workApi.getComments(id),
             ])
             const w = normalizeWork(workRes.data.data || workRes.data)
             setWork(w)
@@ -50,8 +50,8 @@ export default function WorkDetail() {
         setLiked(next)
         setLikeCount(c => next ? c + 1 : c - 1)
         try {
-            if (next) await postApi.likePost(id)
-            else await postApi.unlikePost(id)
+            if (next) await workApi.likeWork(id)
+            else await workApi.unlikeWork(id)
         } catch {
             // rollback
             setLiked(!next)
@@ -63,7 +63,7 @@ export default function WorkDetail() {
         if (!newComment.trim() || submitting) return
         setSubmitting(true)
         try {
-            await postApi.addComment(id, { content: newComment.trim() })
+            await workApi.addComment(id, newComment.trim())
             setNewComment('')
             load()
         } catch { /* 保持 input 不清空 */ }

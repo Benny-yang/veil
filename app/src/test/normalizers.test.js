@@ -1,18 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-// ── normalizeWork（從 Profile.jsx 提取）──────────────────────────────────────
-function normalizeWork(w) {
-    const images = (w.images || []).map(img => img.url || img).filter(Boolean)
-    return {
-        id: w.id,
-        image: images[0] || '',
-        images,
-        desc: w.description || '',
-        tags: w.tags || [],
-        likes: w.like_count ?? 0,
-        comments: w.comment_count ?? 0,
-    }
-}
+import { describe, it, expect } from 'vitest'
+import {
+    normalizeWork,
+    normalizeProfileWork,
+} from '../utils/normalizers'
 
 // ── buildProfileUser（從 Profile.jsx 提取）────────────────────────────────────
 function buildProfileUser(profileData) {
@@ -46,10 +36,10 @@ function normalizeNotif(n) {
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 describe('normalizeWork', () => {
-    it('正常作品：正確映射所有欄位', () => {
+    it('正常作品：photos 欄位正確映射所有欄位', () => {
         const raw = {
             id: 'w1',
-            images: [{ url: 'https://cdn.test/img1.jpg' }, { url: 'https://cdn.test/img2.jpg' }],
+            photos: [{ url: 'https://cdn.test/img1.jpg' }, { url: 'https://cdn.test/img2.jpg' }],
             description: '我的作品',
             tags: ['art', 'photo'],
             like_count: 10,
@@ -66,29 +56,64 @@ describe('normalizeWork', () => {
     })
 
     it('無圖片時 image 為空字串', () => {
-        const result = normalizeWork({ id: 'w2', images: [] })
+        const result = normalizeWork({ id: 'w2', photos: [] })
         expect(result.image).toBe('')
     })
 
     it('like_count 缺少時預設 0', () => {
-        const result = normalizeWork({ id: 'w3', images: [] })
+        const result = normalizeWork({ id: 'w3', photos: [] })
         expect(result.likes).toBe(0)
         expect(result.comments).toBe(0)
     })
 
-    it('過濾 images 中無 url 的元素（null/undefined url）', () => {
+    it('同時有 photos 和 images 時優先讀取 photos', () => {
         const raw = {
             id: 'w4',
-            // url 為 undefined 的物件，img.url || img 結果為物件本身（truthy），但 filter(Boolean) 保留物件
-            // 真正被過濾的是 url 為 undefined 時 (img.url || img) === img，仍 truthy
-            // 過濾只針對 url 為 falsy 字串（''）+ 整個 img 為 falsy 的情況
-            images: [{ url: 'https://cdn.test/valid.jpg' }, { url: 'https://cdn.test/img2.jpg' }],
+            photos: [{ url: 'https://cdn.test/photo.jpg' }],
+            images: [{ url: 'https://cdn.test/image.jpg' }],
         }
         const result = normalizeWork(raw)
-        expect(result.images).toHaveLength(2)
-        expect(result.image).toBe('https://cdn.test/valid.jpg')
+        expect(result.image).toBe('https://cdn.test/photo.jpg')
     })
 })
+
+describe('normalizeProfileWork', () => {
+    it('正確讀取 photos 欄位並設定封面', () => {
+        const raw = {
+            id: 'pw1',
+            photos: [
+                { url: 'https://cdn.test/a.jpg', is_cover: false },
+                { url: 'https://cdn.test/b.jpg', is_cover: true },
+            ],
+            description: '封面測試',
+            like_count: 5,
+            comment_count: 1,
+        }
+        const result = normalizeProfileWork(raw)
+        expect(result.id).toBe('pw1')
+        expect(result.image).toBe('https://cdn.test/b.jpg') // is_cover=true 的那張
+        expect(result.images).toHaveLength(2)
+        expect(result.desc).toBe('封面測試')
+    })
+
+    it('無 is_cover 時取第一張作為封面', () => {
+        const raw = {
+            id: 'pw2',
+            photos: [
+                { url: 'https://cdn.test/first.jpg', is_cover: false },
+                { url: 'https://cdn.test/second.jpg', is_cover: false },
+            ],
+        }
+        const result = normalizeProfileWork(raw)
+        expect(result.image).toBe('https://cdn.test/first.jpg')
+    })
+
+    it('photos 為空時 image 為空字串', () => {
+        const result = normalizeProfileWork({ id: 'pw3', photos: [] })
+        expect(result.image).toBe('')
+    })
+})
+
 
 describe('buildProfileUser', () => {
     const baseProfile = {

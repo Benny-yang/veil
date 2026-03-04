@@ -13,9 +13,8 @@ export function timeLeftText(endsAt) {
     if (!endsAt) return null
     const diff = new Date(endsAt) - new Date()
     if (diff <= 0) return '已截止'
-    const hours = Math.floor(diff / 3600000)
-    const days = Math.floor(hours / 24)
-    if (hours < 24) return `剩餘 ${hours} 小時`
+    const days = Math.ceil(diff / 86400000)
+    if (days <= 1) return '剩餘 1 天'
     return `剩餘 ${days} 天`
 }
 
@@ -30,17 +29,23 @@ export function isUrgent(endsAt) {
 
 /**
  * 後端 Zone 原始資料 → UI 資料結構
+ * 涵蓋 Explore、ZoneDetail、PrivateCollection 等頁面所需欄位。
  */
 export function normalizeZone(z) {
     const accepted = z.accepted_count ?? 0
     const total = z.total_slots ?? 0
-    const images = (z.photos || z.images || []).map(p => p.url || p).filter(Boolean)
+    const photos = z.photos || z.images || []
+    const coverPhoto = photos.find(p => p.is_cover) || photos[0]
+    const images = photos.map(p => p.url || p).filter(Boolean)
+    const image = coverPhoto?.url || images[0] || null
     return {
         id: z.id,
         title: z.title || '無標題',
-        images,
+        image,                                           // 封面單張 URL（Explore / Card 用）
+        images,                                          // 所有圖片 URL 陣列
+        category: z.category || 'other',
         seller: {
-            name: z.seller?.username || '',
+            name: z.seller?.username || z.seller_username || '',
             avatar: z.seller?.avatar_url || null,
             avatarColor: z.seller?.avatar_color || '#C4A882',
             rating: z.seller?.rating ?? null,
@@ -50,8 +55,10 @@ export function normalizeZone(z) {
         slots: `${accepted}/${total}`,
         slotsLeft: total - accepted,
         threshold: z.min_credit_score ? String(z.min_credit_score) : null,
+        pendingCount: z.pending_count ?? 0,
         description: z.description || '',
         status: z.status,
+        raw: z,                                          // 保留原始資料供編輯用
     }
 }
 
@@ -105,7 +112,7 @@ export function normalizePost(p) {
  * 後端 Post/Work 原始資料 → WorkDetail 頁面 UI 資料結構
  */
 export function normalizeWork(w) {
-    const images = (w.images || []).map(img => img.url || img).filter(Boolean)
+    const images = (w.photos || w.images || []).map(img => img.url || img).filter(Boolean)
     return {
         id: w.id,
         images,
@@ -147,8 +154,9 @@ export function normalizeComment(c) {
  * 後端 Work（個人主頁）原始資料 → Profile 頁面 UI 資料結構
  */
 export function normalizeProfileWork(w) {
-    const coverPhoto = (w.images || []).find(img => img.is_cover) || (w.images || [])[0]
-    const allImages = (w.images || []).map(img => img.url || img).filter(Boolean)
+    const photos = w.photos || w.images || []
+    const coverPhoto = photos.find(img => img.is_cover) || photos[0]
+    const allImages = photos.map(img => img.url || img).filter(Boolean)
     return {
         id: w.id,
         image: coverPhoto?.url || allImages[0] || '',

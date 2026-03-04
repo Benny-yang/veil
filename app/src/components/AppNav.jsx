@@ -211,16 +211,18 @@ function NotifBell() {
     const [open, setOpen] = useState(false)
     const [notifications, setNotifications] = useState([])
     const ref = useRef(null)
+    const { currentUser } = useAuth()
 
     const unreadCount = notifications.filter(n => !n.read).length
 
     const load = useCallback(async () => {
+        if (!currentUser) return   // 訪客不呼叫需授權 API
         try {
             const res = await notifApi.list()
             const raw = res.data.data || []
             setNotifications(raw.map(normalizeNotif))
         } catch { /* 靜默失敗 */ }
-    }, [])
+    }, [currentUser])
 
     useEffect(() => {
         load()
@@ -247,6 +249,8 @@ function NotifBell() {
         setNotifications(prev => prev.map(n => ({ ...n, read: true })))
         try { await notifApi.markReadAll() } catch { /* 靜默 */ }
     }
+
+    if (!currentUser) return null   // 訪客不顯示通知鈴
 
     return (
         <div ref={ref} style={{ position: 'relative' }}>
@@ -293,7 +297,10 @@ function NotifBell() {
 // ── 動態未讀訊息數
 function ChatBadge() {
     const [unread, setUnread] = useState(0)
+    const { currentUser } = useAuth()
+
     useEffect(() => {
+        if (!currentUser) return   // 訪客不呼叫需授權 API
         let cancelled = false
         const load = async () => {
             try {
@@ -306,7 +313,8 @@ function ChatBadge() {
         load()
         const timer = setInterval(load, 30000)
         return () => { cancelled = true; clearInterval(timer) }
-    }, [])
+    }, [currentUser])
+
     if (unread <= 0) return null
     return (
         <span style={{
@@ -329,25 +337,18 @@ const NAV_ITEMS = [
 ]
 
 // ── 手機版底部導覽列 ───────────────────────────────────────────────────────────
-const MOBILE_NAV_ITEMS = [
-    { icon: LayoutGrid, to: '/home', label: '首頁' },
-    { icon: Search, to: '/explore', label: '探索' },
-    { icon: Bookmark, to: '/collection', label: '私藏' },
-    { icon: Mail, to: '/chat', label: '訊息', hasBadge: true },
-    { icon: User, to: '/profile', label: '我' },
-]
-
 function MobileBottomNav() {
     const location = useLocation()
+    const navigate = useNavigate()
     const { currentUser } = useAuth()
     const username = currentUser?.username || ''
 
     const navItems = [
-        { icon: LayoutGrid, to: '/home', label: '首頁' },
-        { icon: Search, to: '/explore', label: '探索' },
-        { icon: Bookmark, to: '/collection', label: '私藏' },
-        { icon: Mail, to: '/chat', label: '訊息', hasBadge: true },
-        { icon: User, to: username ? `/profile/${username}` : '/profile', label: '我' },
+        { icon: LayoutGrid, to: '/home', label: '首頁', requireAuth: false },
+        { icon: Search, to: '/explore', label: '探索', requireAuth: false },
+        { icon: Bookmark, to: '/collection', label: '私藏', requireAuth: true },
+        { icon: Mail, to: '/chat', label: '訊息', requireAuth: true, hasBadge: true },
+        { icon: User, to: username ? `/profile/${username}` : '/profile', label: '我', requireAuth: true },
     ]
 
     return (
@@ -359,14 +360,23 @@ function MobileBottomNav() {
             zIndex: 1000,
             paddingBottom: 'env(safe-area-inset-bottom)',
         }}>
-            {navItems.map(({ icon: Icon, to, label, hasBadge }) => {
-                const isActive = location.pathname.startsWith(to === '/home' ? to : to)
-                const color = isActive ? '#C4A882' : '#8C8479'
+            {navItems.map(({ icon: Icon, to, label, requireAuth, hasBadge }) => {
+                const isGuest = !currentUser && requireAuth
+                const isActive = !isGuest && location.pathname.startsWith(to === '/home' ? to : to)
+                const color = isActive ? '#C4A882' : (isGuest ? '#4A4440' : '#8C8479')
+
+                const handleClick = (e) => {
+                    if (isGuest) {
+                        e.preventDefault()
+                        navigate('/auth')
+                    }
+                }
+
                 return (
-                    <Link key={label} to={to} style={{ textDecoration: 'none' }}>
+                    <Link key={label} to={to} onClick={handleClick} style={{ textDecoration: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', padding: 12 }}>
                             <Icon size={22} strokeWidth={1.5} color={color} />
-                            {hasBadge && <ChatBadge />}
+                            {hasBadge && !isGuest && <ChatBadge />}
                         </div>
                     </Link>
                 )
@@ -377,7 +387,9 @@ function MobileBottomNav() {
 
 export default function AppNav() {
     const location = useLocation()
+    const navigate = useNavigate()
     const isMobile = useIsMobile()
+    const { currentUser } = useAuth()
 
     return (
         <>
@@ -405,12 +417,30 @@ export default function AppNav() {
                     VEIL
                 </Link>
 
-                {/* 手機版頂部右側：只顯示通知 Bell */}
-                {isMobile && <NotifBell />}
+                {/* 手機版頂部右側 */}
+                {isMobile && (
+                    currentUser
+                        ? <NotifBell />
+                        : (
+                            <button
+                                onClick={() => navigate('/auth')}
+                                style={{
+                                    padding: '7px 18px', borderRadius: 20,
+                                    border: '1px solid rgba(196,168,130,0.5)',
+                                    background: 'none', color: '#C4A882',
+                                    fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif',
+                                    cursor: 'pointer', letterSpacing: 1,
+                                }}
+                            >
+                                登入
+                            </button>
+                        )
+                )}
 
                 {/* 桌面右側 Icons（手機隱藏） */}
                 {!isMobile && (
                     <div className="flex items-center gap-5">
+                        {/* 首頁、探索 - 全員可見 */}
                         {NAV_ITEMS.map(({ icon: Icon, to, label }) => {
                             const isActive = location.pathname === to
                             return (
@@ -428,21 +458,42 @@ export default function AppNav() {
                                 </Link>
                             )
                         })}
-                        <NotifBell />
-                        <Link
-                            to="/chat" title="訊息"
-                            style={{
-                                color: location.pathname === '/chat' ? '#C4A882' : '#8C8479',
-                                textDecoration: 'none', display: 'flex', alignItems: 'center',
-                                position: 'relative', transition: 'color 0.2s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.color = '#C4A882'}
-                            onMouseLeave={e => e.currentTarget.style.color = location.pathname === '/chat' ? '#C4A882' : '#8C8479'}
-                        >
-                            <Mail size={20} strokeWidth={1.5} />
-                            <ChatBadge />
-                        </Link>
-                        <UserMenu />
+
+                        {/* 已登入：通知 + 私訊 + 大頭照 / 未登入：登入 + 加入按鈕 */}
+                        {currentUser ? (
+                            <>
+                                <NotifBell />
+                                <Link
+                                    to="/chat" title="訊息"
+                                    style={{
+                                        color: location.pathname === '/chat' ? '#C4A882' : '#8C8479',
+                                        textDecoration: 'none', display: 'flex', alignItems: 'center',
+                                        position: 'relative', transition: 'color 0.2s',
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.color = '#C4A882'}
+                                    onMouseLeave={e => e.currentTarget.style.color = location.pathname === '/chat' ? '#C4A882' : '#8C8479'}
+                                >
+                                    <Mail size={20} strokeWidth={1.5} />
+                                    <ChatBadge />
+                                </Link>
+                                <UserMenu />
+                            </>
+                        ) : (
+                            <button
+                                onClick={() => navigate('/auth')}
+                                style={{
+                                    padding: '8px 22px', borderRadius: 20,
+                                    border: 'none',
+                                    backgroundColor: '#C4A882', color: '#FFFFFF',
+                                    fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                                    cursor: 'pointer', letterSpacing: 1, transition: 'opacity 0.2s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.opacity = '0.88' }}
+                                onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                            >
+                                登入 / 加入
+                            </button>
+                        )}
                     </div>
                 )}
             </nav>

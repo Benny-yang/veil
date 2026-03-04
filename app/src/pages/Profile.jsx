@@ -3,9 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Plus, Star, BadgeCheck, Heart, MessageCircle, Settings } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
+import PhotoUpload from '../components/PhotoUpload'
 import { useAuth } from '../context/AuthContext'
-import { userApi, workApi, userExtendedApi, mediaApi } from '../services/api'
-import { buildCreateWorkPayload } from '../utils/normalizers'
+import { userApi, workApi, userExtendedApi, mediaApi, chatApi } from '../services/api'
+import { buildCreateWorkPayload, normalizeProfileWork } from '../utils/normalizers'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,99 +28,7 @@ function WFieldLabel({ children, required }) {
     )
 }
 
-function WorkPhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
-    const inputRef = React.useRef()
-    const photosRef = React.useRef(photos)
-    const [hovered, setHovered] = React.useState(null)
 
-    React.useEffect(() => { photosRef.current = photos }, [photos])
-
-    const handleFiles = (e) => {
-        const files = Array.from(e.target.files)
-        const remaining = 5 - photosRef.current.length
-        if (remaining <= 0) return
-        const toAdd = files.slice(0, remaining)
-        let pending = toAdd.length
-        const accumulated = []
-        toAdd.forEach(file => {
-            const reader = new FileReader()
-            reader.onload = ev => {
-                // 同時保留 file 物件供上傳用
-                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result, file })
-                pending--
-                if (pending === 0) {
-                    const updated = [...photosRef.current, ...accumulated]
-                    onPhotosChange(updated)
-                    if (!coverId) onCoverChange(updated[0].id)
-                }
-            }
-            reader.readAsDataURL(file)
-        })
-        e.target.value = ''
-    }
-
-    const removePhoto = (id, e) => {
-        e.stopPropagation()
-        const updated = photos.filter(p => p.id !== id)
-        onPhotosChange(updated)
-        if (coverId === id) onCoverChange(updated[0]?.id || '')
-    }
-
-    const tileStyle = {
-        width: 100, height: 100, borderRadius: 8, overflow: 'hidden',
-        position: 'relative', flexShrink: 0, cursor: 'pointer',
-    }
-
-    return (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {photos.map(photo => (
-                <div key={photo.id} style={tileStyle}
-                    onClick={() => onCoverChange(photo.id)}
-                    onMouseEnter={() => setHovered(photo.id)}
-                    onMouseLeave={() => setHovered(null)}
-                >
-                    <img src={photo.url} alt="" style={{
-                        width: '100%', height: '100%', objectFit: 'cover',
-                        outline: photo.id === coverId ? '2.5px solid #C4A882' : 'none',
-                        outlineOffset: -2,
-                    }} />
-                    {photo.id === coverId && (
-                        <div style={{
-                            position: 'absolute', bottom: 4, left: 4,
-                            backgroundColor: '#C4A882', color: '#FFFFFF',
-                            fontSize: 10, fontWeight: 600, padding: '2px 6px',
-                            borderRadius: 4, fontFamily: 'Noto Sans TC, sans-serif',
-                        }}>封面</div>
-                    )}
-                    {hovered === photo.id && (
-                        <button onClick={e => removePhoto(photo.id, e)} style={{
-                            position: 'absolute', top: 4, right: 4,
-                            width: 20, height: 20, borderRadius: '50%',
-                            backgroundColor: 'rgba(28,26,24,0.7)', color: '#FFFFFF',
-                            border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>×</button>
-                    )}
-                </div>
-            ))}
-            {photos.length < 5 && (
-                <div onClick={() => inputRef.current.click()} style={{
-                    ...tileStyle,
-                    backgroundColor: '#F8F4EE', border: '1.5px dashed #D4CCC4',
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 4,
-                }}>
-                    <span style={{ fontSize: 20, color: '#B0A89A', lineHeight: 1 }}>+</span>
-                    <span style={{ fontSize: 10, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                        {photos.length}/5
-                    </span>
-                </div>
-            )}
-            <input ref={inputRef} type="file" multiple accept="image/*"
-                style={{ display: 'none' }} onChange={handleFiles} />
-        </div>
-    )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 新增作品 Modal（比照 NewZoneModal 樣式）
@@ -204,7 +113,7 @@ function AddWorkModal({ onClose, onSuccess }) {
                         <div style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginBottom: 8 }}>
                             最多 5 張・點擊照片設為封面
                         </div>
-                        <WorkPhotoUpload
+                        <PhotoUpload
                             photos={values.photos}
                             coverId={values.coverId}
                             onPhotosChange={v => onChange('photos', v)}
@@ -411,20 +320,6 @@ function WorkCell({ work, onClick }) {
 // Profile Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-// 後端 Work 轉換
-function normalizeWork(w) {
-    const images = (w.images || []).map(img => img.url || img).filter(Boolean)
-    return {
-        id: w.id,
-        image: images[0] || '',
-        images,
-        desc: w.description || '',
-        tags: w.tags || [],
-        likes: w.like_count ?? 0,
-        comments: w.comment_count ?? 0,
-    }
-}
-
 export default function Profile() {
     const { userId: username } = useParams()
     const { currentUser } = useAuth()
@@ -450,6 +345,30 @@ export default function Profile() {
     const [reviews, setReviews] = useState([])
     const isMobile = useIsMobile()
 
+    const navigate = useNavigate()
+    const [showLowCredit, setShowLowCredit] = useState(false)
+    const [sendingDm, setSendingDm] = useState(false)
+
+    const handleMessage = async () => {
+        const myCredit = currentUser?.credit_score ?? 50
+        if (myCredit < 40) {
+            setShowLowCredit(true)
+            return
+        }
+        if (sendingDm) return
+        setSendingDm(true)
+        try {
+            const res = await chatApi.createDm(targetUsername)
+            const chatId = res.data.data?.id || res.data?.id
+            navigate(`/chat?id=${chatId}`, { state: { peerName: targetUsername } })
+        } catch {
+            // 失敗仍導頁，讓 Chat 頁處理
+            navigate('/chat')
+        } finally {
+            setSendingDm(false)
+        }
+    }
+
     const loadProfile = useCallback(async () => {
         if (!targetUsername) return
         setLoadingProfile(true)
@@ -463,7 +382,7 @@ export default function Profile() {
             setProfileData(p)
             setFollowed(p.is_following ?? false)
             const ws = worksRes.data.data || []
-            setWorks(ws.map(normalizeWork))
+            setWorks(ws.map(normalizeProfileWork))
         } catch {
             setProfileError('載入失敗，請稍後再試')
         } finally {
@@ -628,14 +547,14 @@ export default function Profile() {
                                         }}>
                                             {followed ? '已追蹤' : '追蹤'}
                                         </button>
-                                        <button style={{
+                                        <button onClick={handleMessage} disabled={sendingDm} style={{
                                             padding: '7px 18px', borderRadius: 6,
                                             border: '1.5px solid #D4CCC4',
                                             backgroundColor: 'transparent', color: '#1C1A18',
                                             fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
-                                            cursor: 'pointer',
+                                            cursor: sendingDm ? 'not-allowed' : 'pointer',
                                         }}>
-                                            私訊
+                                            {sendingDm ? '開啟中⋯' : '私訊'}
                                         </button>
                                     </>
                                 )}
@@ -716,6 +635,40 @@ export default function Profile() {
             {showFollowers && <FollowListModal title={`粉絲（${user.followers}）`} list={followersList} loading={loadingFollowers} onClose={() => setShowFollowers(false)} />}
             {showFollowing && <FollowListModal title={`追蹤中（${user.following}）`} list={followingList} loading={loadingFollowing} onClose={() => setShowFollowing(false)} />}
             {showRatings && <RatingsModal reviews={reviews} onClose={() => setShowRatings(false)} />}
+
+            {/* 信用分不足提醒 */}
+            {showLowCredit && (
+                <div onClick={() => setShowLowCredit(false)} style={{
+                    position: 'fixed', inset: 0, zIndex: 4000,
+                    backgroundColor: 'rgba(28,26,24,0.5)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        width: 360, backgroundColor: '#FFFFFF', borderRadius: 16,
+                        padding: '32px 32px 36px',
+                        position: 'relative',
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+                    }}>
+                        {/* 右上角關閉 */}
+                        <button onClick={() => setShowLowCredit(false)} style={{
+                            position: 'absolute', top: 16, right: 16,
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: 20, color: '#8C8479', lineHeight: 1,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 28, height: 28,
+                        }}>×</button>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: 18, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', marginBottom: 12 }}>
+                                信用分不足
+                            </div>
+                            <div style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.8 }}>
+                                需要信用分 <strong style={{ color: '#C4A882' }}>40 分以上</strong>才能發送私訊<br />
+                                目前分數：<strong style={{ color: '#1C1A18' }}>{currentUser?.credit_score ?? 50} 分</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

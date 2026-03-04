@@ -3,62 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { Clock, Users, Star } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import { zoneApi } from '../services/api'
+import { normalizeZone, timeLeftText, isUrgent } from '../utils/normalizers'
 
-// 計算距離到期的描述文字
-function timeLeftText(endsAt) {
-    if (!endsAt) return null
-    const diff = new Date(endsAt) - new Date()
-    if (diff <= 0) return '已截止'
-    const hours = Math.floor(diff / 3600000)
-    const days = Math.floor(hours / 24)
-    if (hours < 24) return `剩餘 ${hours} 小時`
-    return `剩餘 ${days} 天`
-}
-
-function isUrgent(endsAt) {
-    if (!endsAt) return false
-    const diff = new Date(endsAt) - new Date()
-    return diff > 0 && diff < 24 * 3600000
-}
-
-// 後端資料正規化
-function normalizeZone(z) {
-    const accepted = z.accepted_count ?? 0
-    const total = z.total_slots ?? 0
-    const cover = (z.images && z.images[0]?.url) || z.cover_url || null
-    return {
-        id: z.id,
-        title: z.title || '無標題',
-        image: cover,
-        seller: {
-            name: z.seller?.username || z.seller_username || '',
-            avatar: z.seller?.avatar_url || null,
-            avatarColor: z.seller?.avatar_color || '#C4A882',
-            rating: z.seller?.rating ?? null,
-        },
-        timeLeft: timeLeftText(z.ends_at),
-        timeUrgent: isUrgent(z.ends_at),
-        slots: `${accepted}/${total}`,
-        slotsLeft: total - accepted,
-        threshold: z.min_credit_score ? String(z.min_credit_score) : null,
-        status: z.status,
-    }
-}
-
-const FILTERS = [
-    { key: 'all', label: '全部' },
-    { key: 'expiring', label: '即將截止' },
-    { key: 'available', label: '名額充足' },
-    { key: 'high_credit', label: '高信用賣家' },
+// 分類常數
+const CATEGORIES = [
+    { key: '', label: '全部' },
+    { key: 'top', label: '上身' },
+    { key: 'bottom', label: '下著' },
+    { key: 'intimate', label: '貼身衣物' },
+    { key: 'sock', label: '著用足飾' },
+    { key: 'shoe', label: '鞋類' },
+    { key: 'other', label: '其他' },
 ]
 
-function applyFilter(zones, key) {
-    if (key === 'all') return zones
-    if (key === 'expiring') return zones.filter(z => z.timeUrgent)
-    if (key === 'available') return zones.filter(z => z.slotsLeft > 1)
-    if (key === 'high_credit') return zones.filter(z => z.threshold && Number(z.threshold) >= 4.0)
-    return zones
+const CATEGORY_LABEL = {
+    top: '上衣', bottom: '下著', intimate: '內衣',
+    sock: '襪子', shoe: '鞋子', other: '其他',
 }
+
 
 function ZoneCard({ zone, onClick }) {
     return (
@@ -85,12 +47,14 @@ function ZoneCard({ zone, onClick }) {
         >
             <div style={{ position: 'relative', height: 280, overflow: 'hidden', backgroundColor: '#F0EBE3' }}>
                 {zone.image ? (
-                    <img src={zone.image} alt={zone.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={zone.image} alt={zone.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B0A89A', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>
                         無封面
                     </div>
                 )}
+
+
                 {zone.timeUrgent && (
                     <span style={{
                         position: 'absolute', top: 12, left: 12,
@@ -169,30 +133,31 @@ function SkeletonZone() {
 }
 
 export default function Explore() {
-    const [activeFilter, setActiveFilter] = useState('all')
+    const [activeCategory, setActiveCategory] = useState('')
     const [zones, setZones] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(true)    // 初次載入 → 顯示 skeleton
+    const [fetching, setFetching] = useState(false) // 切換 tab → 保留舊資料
     const [error, setError] = useState('')
     const navigate = useNavigate()
     const isMobile = useIsMobile()
 
-    const load = useCallback(async () => {
-        setLoading(true)
+    const load = useCallback(async (category) => {
+        setFetching(true)
         setError('')
         try {
-            const res = await zoneApi.listZones()
+            const params = category ? { category } : {}
+            const res = await zoneApi.listZones(params)
             const data = res.data.data || []
             setZones(data.filter(z => z.status === 'active').map(normalizeZone))
         } catch (err) {
             setError(err.response?.data?.error?.message || '載入失敗，請稍後再試')
         } finally {
+            setFetching(false)
             setLoading(false)
         }
     }, [])
 
-    useEffect(() => { load() }, [load])
-
-    const filtered = applyFilter(zones, activeFilter)
+    useEffect(() => { load(activeCategory) }, [load, activeCategory])
 
     return (
         <div className="min-h-screen" style={{ backgroundColor: '#F5F1EC' }}>
@@ -202,22 +167,23 @@ export default function Explore() {
                     探索私藏
                 </h1>
 
-                <div style={{ display: 'flex', gap: 10 }}>
-                    {FILTERS.map(f => (
+                {/* 分類 tab */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {CATEGORIES.map(cat => (
                         <button
-                            key={f.key}
-                            onClick={() => setActiveFilter(f.key)}
+                            key={cat.key}
+                            onClick={() => setActiveCategory(cat.key)}
                             style={{
                                 padding: '7px 20px', borderRadius: 20, fontSize: 12,
                                 fontFamily: 'Noto Sans TC, sans-serif',
-                                fontWeight: activeFilter === f.key ? 600 : 400,
-                                color: activeFilter === f.key ? '#F2EDE6' : '#1C1A18',
-                                backgroundColor: activeFilter === f.key ? '#1C1A18' : '#FFFFFF',
-                                border: activeFilter === f.key ? 'none' : '1px solid #E8DDD0',
+                                fontWeight: activeCategory === cat.key ? 600 : 400,
+                                color: activeCategory === cat.key ? '#F2EDE6' : '#1C1A18',
+                                backgroundColor: activeCategory === cat.key ? '#1C1A18' : '#FFFFFF',
+                                border: activeCategory === cat.key ? 'none' : '1px solid #E8DDD0',
                                 cursor: 'pointer', transition: 'all 0.15s',
                             }}
                         >
-                            {f.label}
+                            {cat.label}
                         </button>
                     ))}
                 </div>
@@ -230,13 +196,20 @@ export default function Explore() {
                     <div style={{ textAlign: 'center', padding: '80px 0', color: '#E07A5F', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
                         {error}
                     </div>
-                ) : filtered.length === 0 ? (
+                ) : zones.length === 0 && !fetching ? (
                     <div style={{ textAlign: 'center', padding: '80px 0', color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
-                        目前沒有符合條件的私藏區
+                        目前沒有此分類的私藏
                     </div>
                 ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? 12 : 20 }}>
-                        {filtered.map(zone => (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+                        gap: isMobile ? 12 : 20,
+                        opacity: fetching ? 0.5 : 1,
+                        transition: 'opacity 0.15s',
+                        pointerEvents: fetching ? 'none' : 'auto',
+                    }}>
+                        {zones.map(zone => (
                             <ZoneCard
                                 key={zone.id}
                                 zone={zone}

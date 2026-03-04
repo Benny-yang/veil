@@ -345,6 +345,7 @@ function EmailSentView({ email, onResend, onBackToLogin }) {
 // ── Main Auth Page ────────────────────────────────────────────────────────────
 export default function Auth() {
     const navigate = useNavigate()
+    const { clearSession } = useAuth()
     const [step, setStep] = useState('welcome') // welcome | login | register
     const [registerHint, setRegisterHint] = useState('')
 
@@ -363,7 +364,10 @@ export default function Auth() {
         setStep('login')
     }
 
-    const handleGuest = () => navigate('/home')
+    const handleGuest = async () => {
+        await clearSession()  // 清除旗有 session，確保 Header 切換為訪客模式
+        navigate('/home')
+    }
 
     return (
         <div style={{

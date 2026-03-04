@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Clock, Users, Star, ChevronLeft, ChevronRight, ArrowLeft, CheckCircle } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import { useAuth } from '../context/AuthContext'
 import { zoneApi } from '../services/api'
 import { normalizeZone, timeLeftText, isUrgent } from '../utils/normalizers'
 
@@ -95,20 +96,33 @@ export default function ZoneDetail() {
     const [submitted, setSubmitted] = useState(false)
     const [submitError, setSubmitError] = useState('')
     const [showModal, setShowModal] = useState(false)
+    const { currentUser } = useAuth()
     const isMobile = useIsMobile()
+    const [isOwner, setIsOwner] = useState(false)
+    const [hasApplied, setHasApplied] = useState(false)
 
     const load = useCallback(async () => {
         setLoading(true)
         setError('')
         try {
             const res = await zoneApi.getZone(id)
-            setZone(normalizeZone(res.data.data || res.data))
+            const raw = res.data.data || res.data
+            setZone(normalizeZone(raw))
+
+            if (currentUser?.id) {
+                setIsOwner(raw.seller_id === currentUser.id)
+                try {
+                    const appsRes = await zoneApi.getMyApplications()
+                    const myApps = appsRes.data.data || []
+                    setHasApplied(myApps.some(a => a.zone_id === id))
+                } catch { /* 未登入或 API 失敗不影響頁面顯示 */ }
+            }
         } catch {
             setError('載入私藏失敗，請稍後再試')
         } finally {
             setLoading(false)
         }
-    }, [id])
+    }, [id, currentUser])
 
     useEffect(() => { load() }, [load])
 
@@ -117,7 +131,7 @@ export default function ZoneDetail() {
         setSubmitting(true)
         setSubmitError('')
         try {
-            await zoneApi.apply(id, { message: intro.trim() })
+            await zoneApi.apply(id, { intro: intro.trim() })
             setSubmitted(true)
             setShowModal(true)
         } catch (err) {
@@ -159,13 +173,13 @@ export default function ZoneDetail() {
             }}>
                 {/* ── 左側：圖片 ─────────────────────────────────────────────── */}
                 <div style={isMobile
-                    ? { width: '100%', height: '56vw', maxHeight: 340, flexShrink: 0, position: 'relative', overflow: 'hidden' }
-                    : { width: 420, flexShrink: 0, position: 'relative', borderRadius: 12, overflow: 'hidden' }
+                    ? { width: '100%', flexShrink: 0, position: 'relative', backgroundColor: '#F0EBE3', borderRadius: 0 }
+                    : { width: 420, flexShrink: 0, position: 'relative', borderRadius: 12, overflow: 'hidden', backgroundColor: '#F0EBE3', alignSelf: 'flex-start' }
                 }>
                     {images[imgIdx] ? (
-                        <img src={images[imgIdx]} alt={zone.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={images[imgIdx]} alt={zone.title} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }} />
                     ) : (
-                        <div style={{ width: '100%', height: '100%', backgroundColor: '#E8DDD0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B0A89A', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>無封面</div>
+                        <div style={{ width: '100%', aspectRatio: '3/4', backgroundColor: '#E8DDD0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#B0A89A', fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif' }}>無封面</div>
                     )}
 
                     {images.length > 1 && (
@@ -196,7 +210,7 @@ export default function ZoneDetail() {
                     </h1>
 
                     {/* 賣家資訊列 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Link to={`/profile/${zone.seller.name}`} style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
                         {zone.seller.avatar ? (
                             <img src={zone.seller.avatar} alt={zone.seller.name} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                         ) : (
@@ -213,7 +227,7 @@ export default function ZoneDetail() {
                                 )}
                             </div>
                         </div>
-                    </div>
+                    </Link>
 
                     <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
 
@@ -250,7 +264,38 @@ export default function ZoneDetail() {
                     <div style={{ height: 1, backgroundColor: '#E8DDD0' }} />
 
                     {/* 申請表單 */}
-                    {!submitted ? (
+                    {isOwner ? (
+                        <div style={{
+                            padding: '14px 16px', borderRadius: 8,
+                            backgroundColor: '#FFFFFF', border: '1px solid #E8DDD0',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                        }}>
+                            <div style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                                這是你的私藏
+                            </div>
+                            <button
+                                onClick={() => navigate(`/review/${id}`)}
+                                style={{
+                                    padding: '10px 24px', borderRadius: 8, border: 'none',
+                                    backgroundColor: '#1C1A18', color: '#F2EDE6',
+                                    fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                                    fontWeight: 600, cursor: 'pointer',
+                                }}
+                            >
+                                前往審核申請
+                            </button>
+                        </div>
+                    ) : hasApplied || submitted ? (
+                        <div style={{
+                            padding: '14px 16px', borderRadius: 8,
+                            backgroundColor: '#FFFFFF', border: '1px solid #E8DDD0',
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif'
+                        }}>
+                            <CheckCircle size={16} color="#C4A882" strokeWidth={1.5} />
+                            申請已送出，等待賣家審核中
+                        </div>
+                    ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>申請進入此私藏</div>
                             <div style={{ fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>請填寫自我介紹，讓賣家認識你</div>
@@ -288,16 +333,6 @@ export default function ZoneDetail() {
                             >
                                 {submitting ? '送出中⋯' : '送出申請'}
                             </button>
-                        </div>
-                    ) : (
-                        <div style={{
-                            padding: '14px 16px', borderRadius: 8,
-                            backgroundColor: '#FFFFFF', border: '1px solid #E8DDD0',
-                            display: 'flex', alignItems: 'center', gap: 10,
-                            fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif'
-                        }}>
-                            <CheckCircle size={16} color="#C4A882" strokeWidth={1.5} />
-                            申請已送出，等待賣家審核中
                         </div>
                     )}
 

@@ -1,74 +1,77 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import PostModal from '../components/PostModal'
-import { postApi } from '../services/api'
+import { workApi } from '../services/api'
 import { normalizePost } from '../utils/normalizers'
 
 
 // ── Post Card ─────────────────────────────────────────────────────────────────
 function PostCard({ post, onLikeToggle, onClick }) {
-    const isMobile = useIsMobile()
-    const navigate = useNavigate()
-    const imgHeight = isMobile ? 140 : 200
-
     return (
         <div
-            className="rounded-lg overflow-hidden flex flex-col cursor-pointer"
-            style={{
-                backgroundColor: '#FFFFFF', boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                transition: 'box-shadow 0.2s'
-            }}
             onClick={onClick}
+            style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: 10,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                breakInside: 'avoid',
+                display: 'block',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+                transition: 'box-shadow 0.2s, transform 0.15s',
+                marginBottom: 12,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.07)'; e.currentTarget.style.transform = 'translateY(0)' }}
         >
+            {/* 圖片區：按原始比例顯示 */}
             {post.image ? (
-                <img src={post.image} alt={post.author.name}
-                    className="w-full object-cover" style={{ height: imgHeight }} />
+                <img
+                    src={post.image}
+                    alt={post.author?.name}
+                    style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }}
+                    loading="lazy"
+                />
             ) : (
-                <div className="w-full flex items-center justify-center"
-                    style={{ height: imgHeight, backgroundColor: '#F0EBE3', color: '#B0A89A', fontSize: 12 }}>
+                <div style={{
+                    width: '100%', aspectRatio: '4/3',
+                    backgroundColor: '#F0EBE3', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center',
+                    color: '#B0A89A', fontSize: 12,
+                    fontFamily: 'Noto Sans TC, sans-serif',
+                }}>
                     無圖片
                 </div>
             )}
-            <div className="p-3 flex flex-col gap-2">
-                <div
-                    className="flex items-center gap-2"
-                    onClick={e => { e.stopPropagation(); navigate(`/profile/${post.author.name}`) }}
-                    style={{ cursor: 'pointer' }}
-                >
-                    {post.author.avatar ? (
-                        <img src={post.author.avatar} alt={post.author.name}
-                            className="rounded-full flex-shrink-0"
-                            style={{ width: isMobile ? 22 : 28, height: isMobile ? 22 : 28, objectFit: 'cover' }} />
+
+            {/* 作者 + 互動 */}
+            <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    {post.author?.avatar ? (
+                        <img src={post.author.avatar} alt=""
+                            style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
                     ) : (
-                        <div className="rounded-full flex-shrink-0"
-                            style={{ width: isMobile ? 22 : 28, height: isMobile ? 22 : 28, backgroundColor: post.author.avatarColor }} />
+                        <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: post.author?.avatarColor || '#C4A882', flexShrink: 0 }} />
                     )}
-                    <span style={{
-                        fontSize: isMobile ? 11 : 13, fontWeight: 500, color: '#1C1A18',
-                        fontFamily: 'Noto Sans TC, sans-serif'
-                    }}>
-                        {post.author.displayName || post.author.name}
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.2 }}>
+                        {post.author?.displayName || post.author?.name}
                     </span>
                 </div>
-                <div className="flex items-center gap-4">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button
                         onClick={e => { e.stopPropagation(); onLikeToggle(post) }}
                         style={{
                             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                             display: 'flex', alignItems: 'center', gap: 4,
                             color: post.liked ? '#C4A882' : '#8C8479', fontSize: 11,
-                            fontFamily: 'Noto Sans TC, sans-serif'
+                            fontFamily: 'Noto Sans TC, sans-serif',
                         }}
                     >
                         <Heart size={13} strokeWidth={1.5} fill={post.liked ? '#C4A882' : 'none'} />
                         {post.likes}
                     </button>
-                    <span style={{
-                        display: 'flex', alignItems: 'center', gap: 4,
-                        color: '#8C8479', fontSize: 11, fontFamily: 'Noto Sans TC, sans-serif'
-                    }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#8C8479', fontSize: 11, fontFamily: 'Noto Sans TC, sans-serif' }}>
                         <MessageCircle size={13} strokeWidth={1.5} />
                         {post.comments}
                     </span>
@@ -91,8 +94,9 @@ function SkeletonCard() {
     )
 }
 
-// ── Home Page ─────────────────────────────────────────────────────────────────
+// ── Home Page ──────────────────────────────────────────────────────────────────
 export default function Home() {
+    const isMobile = useIsMobile()
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
@@ -102,7 +106,7 @@ export default function Home() {
         setLoading(true)
         setError('')
         try {
-            const res = await postApi.getFeed()
+            const res = await workApi.getFeed()
             const data = res.data.data || []
             setPosts(data.map(normalizePost))
         } catch (err) {
@@ -115,20 +119,15 @@ export default function Home() {
     useEffect(() => { load() }, [load])
 
     const handleLikeToggle = async (post) => {
-        // Optimistic update
         setPosts(prev => prev.map(p =>
             p.id === post.id
                 ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 }
                 : p
         ))
         try {
-            if (post.liked) {
-                await postApi.unlikePost(post.id)
-            } else {
-                await postApi.likePost(post.id)
-            }
+            if (post.liked) await workApi.unlikeWork(post.id)
+            else await workApi.likeWork(post.id)
         } catch {
-            // rollback on failure
             setPosts(prev => prev.map(p =>
                 p.id === post.id
                     ? { ...p, liked: post.liked, likes: post.likes }
@@ -137,35 +136,54 @@ export default function Home() {
         }
     }
 
-    // 瀑布流：4 欄分配
-    const columns = [[], [], [], []]
-    posts.forEach((post, i) => { columns[i % 4].push(post) })
+    // 由左至右瀑布流：將 posts 依欄高平衡分配，每篇去最矮的欄
+    const colCount = isMobile ? 2 : 4
+    const distributeToColumns = (items) => {
+        const cols = Array.from({ length: colCount }, () => [])
+        const heights = new Array(colCount).fill(0)
+        items.forEach((item, idx) => {
+            // 預估高度：有圖片用 3:4 比例，無圖片用固定 80px，footer 固定 56px
+            const imgHeight = item.image ? 300 : 80
+            const cardHeight = imgHeight + 56
+            const shortestCol = heights.indexOf(Math.min(...heights))
+            cols[shortestCol].push(item)
+            heights[shortestCol] += cardHeight
+        })
+        return cols
+    }
+    const postColumns = !loading && !error && posts.length > 0
+        ? distributeToColumns(posts)
+        : []
+    const skeletonColumns = loading
+        ? Array.from({ length: colCount }, (_, ci) =>
+            [true, false, true, false, false, true, false, true]
+                .filter((_, i) => i % colCount === ci)
+        )
+        : []
+
+    const colGap = isMobile ? 8 : 12
+    const padding = isMobile ? '12px 12px' : '24px 60px'
 
     return (
-        <div className="min-h-screen" style={{ backgroundColor: '#F5F1EC' }}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full"
-                style={{ padding: '24px 60px' }}>
+        <div style={{ minHeight: '100vh', backgroundColor: '#F5F1EC' }}>
+            <div style={{ display: 'flex', gap: colGap, padding, alignItems: 'flex-start' }}>
                 {loading ? (
-                    // Skeleton
-                    Array.from({ length: 4 }).map((_, ci) => (
-                        <div key={ci} className="flex flex-col gap-3">
-                            {Array.from({ length: 3 }).map((__, ri) => (
-                                <SkeletonCard key={ri} />
-                            ))}
+                    skeletonColumns.map((col, ci) => (
+                        <div key={ci} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: colGap }}>
+                            {col.map((tall, i) => <SkeletonCard key={i} tall={tall} />)}
                         </div>
                     ))
                 ) : error ? (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 0', color: '#E07A5F', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
+                    <div style={{ flex: 1, textAlign: 'center', padding: '80px 0', color: '#E07A5F', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
                         {error}
                     </div>
                 ) : posts.length === 0 ? (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 0', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
-                        目前還沒有任何貼文 ✨
+                    <div style={{ flex: 1, textAlign: 'center', padding: '80px 0', color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14 }}>
+                        目前還沒有任何作品 ✨
                     </div>
-
                 ) : (
-                    columns.map((col, i) => (
-                        <div key={i} className="flex flex-col gap-3">
+                    postColumns.map((col, ci) => (
+                        <div key={ci} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: colGap }}>
                             {col.map(post => (
                                 <PostCard
                                     key={post.id}

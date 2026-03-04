@@ -14,15 +14,19 @@ api.interceptors.request.use((config) => {
     return config
 })
 
-// ── Response interceptor：401 自動清除 token 並導回登入頁 ──────────────────
+// ── Response interceptor：401 token 失效時清除並導回登入頁 ──────────────────
+// 只在「有帶 token 但被拒絕」時才重導，訪客無 token 呼叫受保護 API 不重導
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            localStorage.removeItem('veil_access_token')
-            localStorage.removeItem('veil_refresh_token')
-            localStorage.removeItem('veil_user')
-            window.location.href = '/auth'
+            const hadToken = !!localStorage.getItem('veil_access_token')
+            if (hadToken) {
+                localStorage.removeItem('veil_access_token')
+                localStorage.removeItem('veil_refresh_token')
+                localStorage.removeItem('veil_user')
+                window.location.href = '/auth'
+            }
         }
         return Promise.reject(error)
     }
@@ -81,15 +85,22 @@ export const postApi = {
 
 // ── Work API ──────────────────────────────────────────────────────────────────
 export const workApi = {
+    getFeed: () => api.get('/feed'),
     getWorks: (username) => api.get(`/users/${username}/works`),
+    getWork: (id) => api.get(`/works/${id}`),
     createWork: (data) => api.post('/users/me/works', data),
     updateWork: (id, data) => api.patch(`/works/${id}`, data),
     deleteWork: (id) => api.delete(`/works/${id}`),
+    likeWork: (id) => api.post(`/works/${id}/like`),
+    unlikeWork: (id) => api.delete(`/works/${id}/like`),
+    getComments: (id) => api.get(`/works/${id}/comments`),
+    addComment: (id, content) => api.post(`/works/${id}/comments`, { content }),
+    deleteComment: (workId, commentId) => api.delete(`/works/${workId}/comments/${commentId}`),
 }
 
 // ── Zone API ──────────────────────────────────────────────────────────────────
 export const zoneApi = {
-    listZones: () => api.get('/zones'),
+    listZones: (params = {}) => api.get('/zones', { params }),
     getZone: (id) => api.get(`/zones/${id}`),
     createZone: (data) => api.post('/zones', data),
     updateZone: (id, data) => api.patch(`/zones/${id}`, data),
@@ -100,6 +111,7 @@ export const zoneApi = {
     getMyApplications: () => api.get('/users/me/applications'),
     getApplications: (zoneId) => api.get(`/zones/${zoneId}/applications`),
     reviewApplication: (zoneId, appId, action) => api.patch(`/zones/${zoneId}/applications/${appId}`, { action }),
+    setCollector: (zoneId, applicationId) => api.post(`/zones/${zoneId}/set-collector`, { application_id: applicationId }),
 }
 
 // ── User extended ─────────────────────────────────────────────────────────────

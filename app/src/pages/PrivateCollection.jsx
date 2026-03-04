@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Clock, Users, MessageCircle, Edit2, ClipboardList, CheckCircle, XCircle, HelpCircle } from 'lucide-react'
+import { Plus, Clock, Users, MessageCircle, Edit2, ClipboardList, CheckCircle, XCircle, HelpCircle, Bookmark } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
+import PhotoUpload from '../components/PhotoUpload'
 import { zoneApi, mediaApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 
 // ── Application Status Badge ──────────────────────────────────────────────────
@@ -270,107 +272,7 @@ function btnStyle(bg, color, borderColor, filled = false) {
     }
 }
 
-// ── Photo Upload Component ──────────────────────────────────────────────────────────────────
-function PhotoUpload({ photos, coverId, onPhotosChange, onCoverChange }) {
-    const inputRef = React.useRef()
-    const photosRef = React.useRef(photos)   // always up-to-date
-    const [hovered, setHovered] = React.useState(null)
 
-    React.useEffect(() => { photosRef.current = photos }, [photos])
-
-    const handleFiles = (e) => {
-        const files = Array.from(e.target.files)
-        const current = photosRef.current
-        const remaining = 5 - current.length
-        if (remaining <= 0) return
-        const toAdd = files.slice(0, remaining)
-        let pending = toAdd.length
-        const accumulated = []
-
-        toAdd.forEach(file => {
-            const reader = new FileReader()
-            reader.onload = ev => {
-                // 同時保留 file 物件供上傳用
-                accumulated.push({ id: Date.now() + Math.random(), url: ev.target.result, file })
-                pending--
-                if (pending === 0) {
-                    const updated = [...photosRef.current, ...accumulated]
-                    onPhotosChange(updated)
-                    if (!coverId) onCoverChange(updated[0].id)
-                }
-            }
-            reader.readAsDataURL(file)
-        })
-        e.target.value = ''
-    }
-
-    const removePhoto = (id, e) => {
-        e.stopPropagation()
-        const updated = photos.filter(p => p.id !== id)
-        onPhotosChange(updated)
-        if (coverId === id) onCoverChange(updated[0]?.id || '')
-    }
-
-    const tileStyle = {
-        width: 100, height: 100, borderRadius: 8, overflow: 'hidden',
-        position: 'relative', flexShrink: 0, cursor: 'pointer',
-    }
-
-    return (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {photos.map(photo => (
-                <div key={photo.id} style={tileStyle}
-                    onClick={() => onCoverChange(photo.id)}
-                    onMouseEnter={() => setHovered(photo.id)}
-                    onMouseLeave={() => setHovered(null)}
-                >
-                    <img src={photo.url} alt="" style={{
-                        width: '100%', height: '100%', objectFit: 'cover',
-                        outline: photo.id === coverId ? '2.5px solid #C4A882' : 'none',
-                        outlineOffset: -2,
-                    }} />
-                    {/* Cover badge */}
-                    {photo.id === coverId && (
-                        <div style={{
-                            position: 'absolute', bottom: 4, left: 4,
-                            backgroundColor: '#C4A882', color: '#FFFFFF',
-                            fontSize: 10, fontWeight: 600, padding: '2px 6px',
-                            borderRadius: 4, fontFamily: 'Noto Sans TC, sans-serif',
-                        }}>封面</div>
-                    )}
-                    {/* Remove button */}
-                    {hovered === photo.id && (
-                        <button onClick={e => removePhoto(photo.id, e)} style={{
-                            position: 'absolute', top: 4, right: 4,
-                            width: 20, height: 20, borderRadius: '50%',
-                            backgroundColor: 'rgba(28,26,24,0.7)', color: '#FFFFFF',
-                            border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>×</button>
-                    )}
-                </div>
-            ))}
-
-            {/* Add tile */}
-            {photos.length < 5 && (
-                <div onClick={() => inputRef.current.click()} style={{
-                    ...tileStyle,
-                    backgroundColor: '#F8F4EE', border: '1.5px dashed #D4CCC4',
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center', gap: 4,
-                }}>
-                    <span style={{ fontSize: 20, color: '#B0A89A', lineHeight: 1 }}>+</span>
-                    <span style={{ fontSize: 10, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                        {photos.length}/5
-                    </span>
-                </div>
-            )}
-
-            <input ref={inputRef} type="file" multiple accept="image/*"
-                style={{ display: 'none' }} onChange={handleFiles} />
-        </div>
-    )
-}
 
 // ── Shared Zone Form Fields ────────────────────────────────────────────────────
 // inputStyle shared helper
@@ -393,20 +295,61 @@ function FieldLabel({ children, required }) {
     )
 }
 
-function ZoneFormFields({ values, onChange }) {
-    const { title, desc, startDate, endDate, slots, creditMin, requireIntro } = values
+// 分類選項
+const ZONE_CATEGORIES = [
+    { key: 'top', label: '上身' },
+    { key: 'bottom', label: '下著' },
+    { key: 'intimate', label: '貼身衣物' },
+    { key: 'sock', label: '著用足飾' },
+    { key: 'shoe', label: '鞋類' },
+    { key: 'other', label: '其他' },
+]
+
+function ZoneFormFields({ values, onChange, isEditing = false }) {
+    const { title, desc, startDate, endDate, slots, creditMin, requireIntro, category } = values
     const focus = e => e.target.style.borderColor = '#C4A882'
     const blur = e => e.target.style.borderColor = '#E8DDD0'
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* 分類 */}
+            <div>
+                <FieldLabel required>私藏分類</FieldLabel>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {ZONE_CATEGORIES.map(cat => (
+                        <button
+                            key={cat.key}
+                            type="button"
+                            onClick={() => onChange('category', cat.key)}
+                            style={{
+                                padding: '7px 18px', borderRadius: 20, fontSize: 12,
+                                fontFamily: 'Noto Sans TC, sans-serif',
+                                fontWeight: category === cat.key ? 600 : 400,
+                                color: category === cat.key ? '#FFFFFF' : '#1C1A18',
+                                backgroundColor: category === cat.key ? '#C4A882' : '#FFFFFF',
+                                border: category === cat.key ? 'none' : '1.5px solid #E8DDD0',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                            }}
+                        >
+                            {cat.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
             {/* 私藏標題 */}
             <div>
                 <FieldLabel required>私藏標題</FieldLabel>
                 <input value={title} onChange={e => onChange('title', e.target.value)}
                     placeholder="例：春季限定｜復古洋裝私藏"
+                    maxLength={30}
                     style={zoneInputStyle} onFocus={focus} onBlur={blur} />
+                <div style={{ textAlign: 'right', fontSize: 11, color: title.length >= 25 ? '#C4A882' : '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 4 }}>
+                    {title.length}/30
+                </div>
             </div>
 
             {/* 私藏描述 */}
@@ -414,8 +357,12 @@ function ZoneFormFields({ values, onChange }) {
                 <FieldLabel required>私藏描述</FieldLabel>
                 <textarea value={desc} onChange={e => onChange('desc', e.target.value)}
                     placeholder="描述你的私藏內容，讓申請者了解你想出售的商品…"
+                    maxLength={200}
                     rows={3} style={{ ...zoneInputStyle, resize: 'none' }}
                     onFocus={focus} onBlur={blur} />
+                <div style={{ textAlign: 'right', fontSize: 11, color: desc.length >= 180 ? '#C4A882' : '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 4 }}>
+                    {desc.length}/200
+                </div>
             </div>
 
             {/* 私藏照片 */}
@@ -438,13 +385,16 @@ function ZoneFormFields({ values, onChange }) {
             <div>
                 <FieldLabel required>私藏時效</FieldLabel>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <input type="date" value={startDate} onChange={e => onChange('startDate', e.target.value)}
-                        style={{ ...zoneInputStyle, flex: 1 }} onFocus={focus} onBlur={blur} />
+                    <input type="date" value={startDate} min={today}
+                        onChange={e => onChange('startDate', e.target.value)}
+                        disabled={isEditing}
+                        style={{ ...zoneInputStyle, flex: 1, ...(isEditing ? { backgroundColor: '#EEEAE4', color: '#8C8479', cursor: 'not-allowed' } : {}) }} onFocus={focus} onBlur={blur} />
                     <span style={{
                         fontSize: 13, color: '#8C8479', flexShrink: 0,
                         fontFamily: 'Noto Sans TC, sans-serif'
                     }}>至</span>
-                    <input type="date" value={endDate} onChange={e => onChange('endDate', e.target.value)}
+                    <input type="date" value={endDate} min={startDate || today}
+                        onChange={e => onChange('endDate', e.target.value)}
                         style={{ ...zoneInputStyle, flex: 1 }} onFocus={focus} onBlur={blur} />
                 </div>
             </div>
@@ -511,14 +461,16 @@ function ZoneFormFields({ values, onChange }) {
 // ── Edit Zone Modal ────────────────────────────────────────────────────────────
 function EditZoneModal({ zone, onClose, onUpdated }) {
     const [values, setValues] = useState({
-        title: zone.title, desc: zone.raw?.description || '', startDate: zone.raw?.starts_at ? new Date(zone.raw.starts_at).toISOString().split('T')[0] : '', endDate: zone.raw?.ends_at ? new Date(zone.raw.ends_at).toISOString().split('T')[0] : '',
+        title: zone.title, desc: zone.raw?.description || '', startDate: zone.raw?.created_at ? new Date(zone.raw.created_at).toISOString().split('T')[0] : '', endDate: zone.raw?.ends_at ? new Date(zone.raw.ends_at).toISOString().split('T')[0] : '',
         slots: String(zone.raw?.total_slots || 5), creditMin: String(zone.raw?.min_credit_score || 0), requireIntro: zone.raw?.require_intro || true,
+        category: zone.raw?.category || 'other',
         photos: (zone.raw?.photos || []).map(p => ({ id: p.id, url: p.url })),
         coverId: (zone.raw?.photos || []).find(p => p.is_cover)?.id || (zone.raw?.photos?.[0]?.id || ''),
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
     const [saving, setSaving] = useState(false)
     const [deleting, setDeleting] = useState(false)
+    const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
     const handleSave = async () => {
         if (!values.title.trim()) return
@@ -539,6 +491,7 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
             await zoneApi.updateZone(zone.id, {
                 title: values.title,
                 description: values.desc,
+                category: values.category || 'other',
                 starts_at: values.startDate ? new Date(values.startDate).toISOString() : null,
                 ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
                 total_slots: parseInt(values.slots || '1', 10),
@@ -552,7 +505,7 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
     }
 
     const handleDelete = async () => {
-        if (!window.confirm('確定要關閉此私藏？確定後申請者將無法再申請。')) return
+        setShowCloseConfirm(false)
         setDeleting(true)
         try {
             await zoneApi.deleteZone(zone.id)
@@ -562,79 +515,127 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
     }
 
     return (
-        <div onClick={onClose} style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
-            backgroundColor: 'rgba(28,26,24,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(4px)', overflowY: 'auto', padding: '40px 0',
-        }}>
-            <div onClick={e => e.stopPropagation()} style={{
-                width: 560, backgroundColor: '#FFFFFF', borderRadius: 16,
-                padding: 36, display: 'flex', flexDirection: 'column', gap: 24,
-                boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
-                maxHeight: '90vh', overflowY: 'auto',
+        <>
+            <div onClick={onClose} style={{
+                position: 'fixed', inset: 0, zIndex: 1000,
+                backgroundColor: 'rgba(28,26,24,0.5)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(4px)', overflowY: 'auto', padding: '40px 0',
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h2 style={{
-                        fontSize: 20, fontWeight: 600, color: '#1C1A18', margin: 0,
-                        fontFamily: 'Noto Sans TC, sans-serif'
-                    }}>編輯私藏</h2>
-                    <button onClick={onClose} style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        fontSize: 20, color: '#8C8479', lineHeight: 1,
-                    }}>×</button>
-                </div>
-
-                <ZoneFormFields values={values} onChange={onChange} />
-
-                {/* Status (read-only) */}
-                <div style={{
-                    backgroundColor: '#F8F4EE', borderRadius: 8, padding: '10px 14px',
-                    fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
-                    display: 'flex', justifyContent: 'space-between',
+                <div onClick={e => e.stopPropagation()} style={{
+                    width: 560, backgroundColor: '#FFFFFF', borderRadius: 16,
+                    padding: 36, display: 'flex', flexDirection: 'column', gap: 24,
+                    boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+                    maxHeight: '90vh', overflowY: 'auto',
                 }}>
-                    <span>目前狀態</span>
-                    <span style={{ fontWeight: 600, color: '#C4A882' }}>{zone.status}</span>
-                </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h2 style={{
+                            fontSize: 20, fontWeight: 600, color: '#1C1A18', margin: 0,
+                            fontFamily: 'Noto Sans TC, sans-serif'
+                        }}>編輯私藏</h2>
+                        <button onClick={onClose} style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: 20, color: '#8C8479', lineHeight: 1,
+                        }}>×</button>
+                    </div>
 
-                <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={onClose} style={{
-                        flex: 1, padding: '13px 0', borderRadius: 8,
-                        border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
-                        fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
-                    }}>取消</button>
-                    <button onClick={handleSave} disabled={saving || !values.title.trim()} style={{
-                        flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
-                        backgroundColor: (values.title.trim() && !saving) ? '#1C1A18' : '#D4CCC4',
-                        fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
-                        fontWeight: 600, color: '#F2EDE6',
-                        cursor: (values.title.trim() && !saving) ? 'pointer' : 'not-allowed',
-                    }}>{saving ? '儲存中⋯' : '儲存變更'}</button>
-                </div>
+                    <ZoneFormFields values={values} onChange={onChange} isEditing />
 
-                {/* 關閉私藏 danger zone */}
-                <div style={{ borderTop: '1px solid #F0EBE3', paddingTop: 14 }}>
-                    <button onClick={handleDelete} disabled={deleting} style={{
-                        width: '100%', padding: '12px 0', borderRadius: 8,
-                        border: '1px solid #EDCFCF', backgroundColor: '#FDF6F6',
-                        fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
-                        color: deleting ? '#B0A89A' : '#C0392B', cursor: deleting ? 'not-allowed' : 'pointer',
-                        transition: 'background-color 0.15s',
-                    }}
-                        onMouseEnter={e => { if (!deleting) e.currentTarget.style.backgroundColor = '#FAE8E8' }}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FDF6F6'}
-                    >
-                        {deleting ? '關閉中⋯' : '關閉私藏'}
-                    </button>
+                    {/* Status (read-only) */}
                     <div style={{
-                        fontSize: 11, color: '#B0A89A', textAlign: 'center',
-                        fontFamily: 'Noto Sans TC, sans-serif', marginTop: 6,
+                        backgroundColor: '#F8F4EE', borderRadius: 8, padding: '10px 14px',
+                        fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
+                        display: 'flex', justifyContent: 'space-between',
                     }}>
-                        關閉後申請者將無法再繼續申請，已通過的對話不受影響
+                        <span>目前狀態</span>
+                        <span style={{ fontWeight: 600, color: '#C4A882' }}>{zone.status}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <button onClick={onClose} style={{
+                            flex: 1, padding: '13px 0', borderRadius: 8,
+                            border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
+                            fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
+                        }}>取消</button>
+                        <button onClick={handleSave} disabled={saving || !values.title.trim()} style={{
+                            flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
+                            backgroundColor: (values.title.trim() && !saving) ? '#1C1A18' : '#D4CCC4',
+                            fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                            fontWeight: 600, color: '#F2EDE6',
+                            cursor: (values.title.trim() && !saving) ? 'pointer' : 'not-allowed',
+                        }}>{saving ? '儲存中⋯' : '儲存變更'}</button>
+                    </div>
+
+                    {/* 關閉私藏 danger zone */}
+                    <div style={{ borderTop: '1px solid #F0EBE3', paddingTop: 14 }}>
+                        <button onClick={() => setShowCloseConfirm(true)} disabled={deleting} style={{
+                            width: '100%', padding: '12px 0', borderRadius: 8,
+                            border: '1px solid #EDCFCF', backgroundColor: '#FDF6F6',
+                            fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                            color: deleting ? '#B0A89A' : '#C0392B', cursor: deleting ? 'not-allowed' : 'pointer',
+                            transition: 'background-color 0.15s',
+                        }}
+                            onMouseEnter={e => { if (!deleting) e.currentTarget.style.backgroundColor = '#FAE8E8' }}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#FDF6F6'}
+                        >
+                            {deleting ? '關閉中⋯' : '關閉私藏'}
+                        </button>
+                        <div style={{
+                            fontSize: 11, color: '#B0A89A', textAlign: 'center',
+                            fontFamily: 'Noto Sans TC, sans-serif', marginTop: 6,
+                        }}>
+                            關閉後申請者將無法再繼續申請，已通過的對話不受影響
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+
+            {
+                showCloseConfirm && (
+                    <div onClick={() => setShowCloseConfirm(false)} style={{
+                        position: 'fixed', inset: 0, zIndex: 2000,
+                        backgroundColor: 'rgba(28,26,24,0.45)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(3px)',
+                    }}>
+                        <div onClick={e => e.stopPropagation()} style={{
+                            width: 340, backgroundColor: '#FFFFFF', borderRadius: 16,
+                            padding: 28, display: 'flex', flexDirection: 'column', gap: 16,
+                            boxShadow: '0 16px 48px rgba(0,0,0,0.16)',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{
+                                    width: 36, height: 36, borderRadius: '50%',
+                                    backgroundColor: '#FEF0EC', display: 'flex',
+                                    alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                    <span style={{ fontSize: 18 }}>⚠️</span>
+                                </div>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                                    確定要關閉此私藏？
+                                </div>
+                            </div>
+                            <div style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.6 }}>
+                                關閉後申請者將無法再申請。<br />已通過的對話不受影響。
+                            </div>
+                            <div style={{ display: 'flex', gap: 10 }}>
+                                <button onClick={() => setShowCloseConfirm(false)} style={{
+                                    flex: 1, padding: '11px 0', borderRadius: 8,
+                                    border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
+                                    fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
+                                }}>取消</button>
+                                <button onClick={handleDelete} style={{
+                                    flex: 1, padding: '11px 0', borderRadius: 8, border: 'none',
+                                    backgroundColor: '#C0392B', color: '#FFFFFF',
+                                    fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                                    fontWeight: 600, cursor: 'pointer',
+                                }}>確定關閉</button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </>
     )
 }
 
@@ -642,7 +643,7 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
 function NewZoneModal({ onClose, onCreated }) {
     const [values, setValues] = useState({
         title: '', desc: '', startDate: '', endDate: '',
-        slots: '3', creditMin: '0', requireIntro: true, photos: [], coverId: '',
+        slots: '3', creditMin: '0', requireIntro: true, photos: [], coverId: '', category: 'other',
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
     const [saving, setSaving] = useState(false)
@@ -668,6 +669,7 @@ function NewZoneModal({ onClose, onCreated }) {
             await zoneApi.createZone({
                 title: values.title,
                 description: values.desc,
+                category: values.category || 'other',
                 ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
                 total_slots: parseInt(values.slots || '1', 10),
                 min_credit_score: parseInt(values.creditMin || '0', 10),
@@ -786,8 +788,12 @@ function normalizeApp(a) {
 // ── Main Page ──────────────────────────────────────────────────────────────────
 export default function PrivateCollection() {
     const navigate = useNavigate()
+    const { currentUser } = useAuth()
+
+    // ── Hooks（必須在任何 return 之前呼叫，確保順序一致）──
     const [mainTab, setMainTab] = useState('mine')    // 'mine' | 'applied'
     const [activeTab, setActiveTab] = useState('active')   // 'active' | 'ended'
+    const [appFilter, setAppFilter] = useState('全部')     // '全部' | '審核中' | '已通過' | '未通過'
     const [showNewModal, setShowNewModal] = useState(false)
     const [editingZone, setEditingZone] = useState(null)
 
@@ -796,12 +802,74 @@ export default function PrivateCollection() {
     const [myApps, setMyApps] = useState([])          // normalizeApp[]
     const [loading, setLoading] = useState(true)
 
+    // 載入資料
+    const loadData = useCallback(async () => {
+        if (!currentUser) return
+        setLoading(true)
+        try {
+            const [zonesRes, appsRes] = await Promise.all([
+                zoneApi.getMyZones(),
+                zoneApi.getMyApplications(),
+            ])
+            setMyZones((zonesRes.data.data || []).map(normalizeZone))
+            setMyApps((appsRes.data.data || []).map(normalizeApp))
+        } catch { /* 保持空狀態 */ }
+        finally { setLoading(false) }
+    }, [currentUser])
+
+    useEffect(() => { loadData() }, [loadData])
+
+    const isMobile = useIsMobile()
+
+    // ── Guard：所有 Hooks 已呼叫完畢，可以 early return ──
+    if (!currentUser) {
+        return (
+            <div style={{
+                minHeight: '80vh', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 20,
+                backgroundColor: '#F8F4EE', padding: 32,
+            }}>
+                <div style={{
+                    width: 64, height: 64, borderRadius: '50%',
+                    backgroundColor: '#F0EBE3',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    <Bookmark size={28} color="#C4A882" strokeWidth={1.5} />
+                </div>
+                <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                        登入後才能查看私藏
+                    </div>
+                    <div style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.8 }}>
+                        私藏是你開設的限時交流空間，登入後才能管理或申請私藏。
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                        onClick={() => navigate('/auth')}
+                        style={{
+                            padding: '12px 32px', borderRadius: 24, border: 'none',
+                            backgroundColor: '#C4A882', color: '#FFFFFF',
+                            fontSize: 14, fontFamily: 'Noto Sans TC, sans-serif',
+                            cursor: 'pointer', letterSpacing: 1,
+                        }}
+                    >
+                        登入 / 加入 VEIL
+                    </button>
+                </div>
+            </div>
+        )
+    }
+
     const isMine = mainTab === 'mine'
 
     // 視準展示 list
     const zones = myZones.filter(z =>
         activeTab === 'active' ? z.status === '進行中' : z.status === '已結束'
     )
+    const filteredApps = appFilter === '全部'
+        ? myApps
+        : myApps.filter(a => a.appStatus === appFilter)
     const activeCount = myZones.filter(z => z.status === '進行中').length
     const endedCount = myZones.filter(z => z.status === '已結束').length
     const MINE_TAB_CONFIG = [
@@ -813,24 +881,6 @@ export default function PrivateCollection() {
         { key: 'mine', label: '我開的' },
         { key: 'applied', label: '我申請的' },
     ]
-
-    // 載入資料
-    const loadData = useCallback(async () => {
-        setLoading(true)
-        try {
-            const [zonesRes, appsRes] = await Promise.all([
-                zoneApi.getMyZones(),
-                zoneApi.getMyApplications(),
-            ])
-            setMyZones((zonesRes.data.data || []).map(normalizeZone))
-            setMyApps((appsRes.data.data || []).map(normalizeApp))
-        } catch { /* 保持空狀態 */ }
-        finally { setLoading(false) }
-    }, [])
-
-    useEffect(() => { loadData() }, [loadData])
-
-    const isMobile = useIsMobile()
 
     return (
         <div className="min-h-screen" style={{ backgroundColor: '#F5F1EC' }}>
@@ -908,17 +958,20 @@ export default function PrivateCollection() {
                 {/* ── 我申請的：Filter pills */}
                 {!isMine && (
                     <div style={{ display: 'flex', gap: 8 }}>
-                        {['全部', '審核中', '已通過', '未通過'].map((f, i) => (
-                            <button key={f} style={{
-                                padding: '6px 18px', borderRadius: 20, fontSize: 12,
-                                fontFamily: 'Noto Sans TC, sans-serif',
-                                fontWeight: i === 0 ? 600 : 400,
-                                backgroundColor: i === 0 ? '#1C1A18' : '#FFFFFF',
-                                color: i === 0 ? '#F2EDE6' : '#1C1A18',
-                                border: i === 0 ? 'none' : '1px solid #E8DDD0',
-                                cursor: 'pointer',
-                            }}>{f}</button>
-                        ))}
+                        {['全部', '審核中', '已通過', '未通過'].map(f => {
+                            const isActive = appFilter === f
+                            return (
+                                <button key={f} onClick={() => setAppFilter(f)} style={{
+                                    padding: '6px 18px', borderRadius: 20, fontSize: 12,
+                                    fontFamily: 'Noto Sans TC, sans-serif',
+                                    fontWeight: isActive ? 600 : 400,
+                                    backgroundColor: isActive ? '#1C1A18' : '#FFFFFF',
+                                    color: isActive ? '#F2EDE6' : '#1C1A18',
+                                    border: isActive ? 'none' : '1px solid #E8DDD0',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                }}>{f}</button>
+                            )
+                        })}
                     </div>
                 )}
 
@@ -936,7 +989,7 @@ export default function PrivateCollection() {
                                 onEdit={() => setEditingZone(zone)}
                             />
                         ))
-                        : myApps.map(app => <ApplicationRow key={app.id} app={app} onCancel={async () => {
+                        : filteredApps.map(app => <ApplicationRow key={app.id} app={app} onCancel={async () => {
                             try { await zoneApi.cancelApply(app.zoneId); loadData() } catch { }
                         }} />)
                     }

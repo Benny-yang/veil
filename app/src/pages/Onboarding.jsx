@@ -475,10 +475,16 @@ function VerifyStep({ onFinish, onSkip }) {
 // ── Main Onboarding Page ──────────────────────────────────────────────────────
 export default function Onboarding() {
     const navigate = useNavigate()
+    const { updateProfile } = useAuth()
     const [step, setStep] = useState(1)
 
-    const goHome = () => {
-        localStorage.setItem('veil_has_logged_in', 'true')
+    const goHome = async () => {
+        try {
+            await userApi.completeOnboarding({})
+            updateProfile({ onboarding_completed: true })
+        } catch {
+            // 即使 API 失敗也繼續導頁，不阻斷用戶流程
+        }
         navigate('/home')
     }
 

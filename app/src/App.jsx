@@ -29,7 +29,7 @@ function ProtectedRoute({ children }) {
     )
   }
   if (!currentUser) {
-    return <Navigate to="/auth" replace />
+    return <Navigate to="/home" replace />
   }
   return children
 }
@@ -47,17 +47,22 @@ function AppLayout() {
           <Route path="/auth" element={<Auth />} />
           <Route path="/onboarding" element={<Onboarding />} />
 
-          {/* Protected routes */}
-          <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/explore" element={<ProtectedRoute><Explore /></ProtectedRoute>} />
+          {/* Public routes - 訪客可瀏覽 */}
+          <Route path="/home" element={<Home />} />
+          <Route path="/explore" element={<Explore />} />
+          <Route path="/collection" element={<PrivateCollection />} />
+          <Route path="/profile/:userId" element={<Profile />} />
+
+          {/* Protected routes - 需要登入 */}
           <Route path="/zones/:id" element={<ProtectedRoute><ZoneDetail /></ProtectedRoute>} />
           <Route path="/works/:id" element={<ProtectedRoute><WorkDetail /></ProtectedRoute>} />
-          <Route path="/collection" element={<ProtectedRoute><PrivateCollection /></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="/review/:zoneId" element={<ProtectedRoute><ReviewApplications /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route path="/profile/:userId" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+
+          {/* 所有不存在的路由 → 導回首頁 */}
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </main>
     </>

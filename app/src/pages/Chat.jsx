@@ -1,17 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { Send, ChevronDown, ChevronUp, UserCheck, Star, Package, CreditCard, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
-import { chatApi } from '../services/api'
+import { chatApi, zoneApi } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 常數
 // ─────────────────────────────────────────────────────────────────────────────
 const TX_STEPS = [
-    { key: 'pending_payment', label: '待付款', Icon: CreditCard },
-    { key: 'paid', label: '已付款', Icon: CreditCard },
-    { key: 'shipped', label: '待收貨', Icon: Package },
+    { key: 'pending', label: '待付款', Icon: CreditCard },
+    { key: 'shipping', label: '已付款', Icon: CreditCard },
+    { key: 'received', label: '待收貨', Icon: Package },
     { key: 'completed', label: '已完成', Icon: CheckCircle },
 ]
 const TX_STEP_INDEX = Object.fromEntries(TX_STEPS.map((s, i) => [s.key, i]))
@@ -34,6 +34,43 @@ function isTimedOut(tx) {
 }
 function nowTime() {
     return new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** 從 API 錯誤回應中擷取使用者可見訊息 */
+function extractErrorMessage(err) {
+    const data = err?.response?.data
+    if (data?.message) return data.message
+    if (data?.error) return data.error
+    if (err?.message) return err.message
+    return '操作失敗，請稍後再試'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toast（輕量級通知）
+// ─────────────────────────────────────────────────────────────────────────────
+function Toast({ message, type = 'error', onClose }) {
+    const bgColor = type === 'error' ? '#C0392B' : '#2D7A4A'
+    const icon = type === 'error' ? '⚠️' : '✅'
+
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3500)
+        return () => clearTimeout(timer)
+    }, [onClose])
+
+    return (
+        <div style={{
+            position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 3000, display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 20px', borderRadius: 10,
+            backgroundColor: bgColor, color: '#FFFFFF',
+            fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 500,
+            boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+            animation: 'toast-in 0.25s ease-out',
+        }}>
+            <span>{icon}</span>
+            <span>{message}</span>
+        </div>
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -247,12 +284,12 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
                 return { label: '★ 評價對方', type: 'review', color: '#C4A882' }
             return { label: '交易已完成', type: null, color: '#D4CCC4' }
         }
-        if (tx.status === 'pending_payment' && viewerRole === 'buyer')
-            return { label: '我已付款', type: 'pending_payment→paid', color: '#1C1A18' }
-        if (tx.status === 'paid' && viewerRole === 'seller')
-            return { label: '已寄出', type: 'paid→shipped', color: '#1C1A18' }
-        if (tx.status === 'shipped' && viewerRole === 'buyer')
-            return { label: '確認收貨', type: 'shipped→completed', color: '#2D7A4A' }
+        if (tx.status === 'pending' && viewerRole === 'buyer')
+            return { label: '我已付款', type: 'pending→shipping', color: '#1C1A18' }
+        if (tx.status === 'shipping' && viewerRole === 'seller')
+            return { label: '確認寄出', type: 'shipping→received', color: '#1C1A18' }
+        if (tx.status === 'received' && viewerRole === 'buyer')
+            return { label: '確認收貨', type: 'received→completed', color: '#2D7A4A' }
         // 另一方視角：等待中
         return null
     }
@@ -359,7 +396,7 @@ function ZoneClosedBanner({ zoneTitle }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Chat Bubble
 // ─────────────────────────────────────────────────────────────────────────────
-function Bubble({ msg, peerColor }) {
+function Bubble({ msg, peerColor, peerAvatarUrl }) {
     const isMe = msg.from === 'me'
     if (msg.from === 'system') {
         return (
@@ -376,7 +413,9 @@ function Bubble({ msg, peerColor }) {
     return (
         <div style={{ display: 'flex', gap: 10, flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-start' }}>
             {!isMe && (
-                <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, backgroundColor: peerColor }} />
+                peerAvatarUrl
+                    ? <img src={peerAvatarUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, objectFit: 'cover' }} />
+                    : <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0, backgroundColor: peerColor }} />
             )}
             <div style={{ maxWidth: '65%', display: 'flex', flexDirection: 'column', gap: 3, alignItems: isMe ? 'flex-end' : 'flex-start' }}>
                 <div style={{
@@ -417,7 +456,7 @@ function SidebarTab({ label, active, onClick }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatItem
 // ─────────────────────────────────────────────────────────────────────────────
-function ChatItem({ avatarLetter, avatarColor, title, subtitle, badge, badgeColor, unread, selected, onClick }) {
+function ChatItem({ avatarLetter, avatarColor, avatarUrl, title, subtitle, badge, badgeColor, unread, selected, onClick }) {
     return (
         <div onClick={onClick} style={{
             display: 'flex', alignItems: 'center', gap: 12,
@@ -430,14 +469,20 @@ function ChatItem({ avatarLetter, avatarColor, title, subtitle, badge, badgeColo
         >
             {/* 頭像（附未讀圓點） */}
             <div style={{ position: 'relative', flexShrink: 0 }}>
-                <div style={{
-                    width: 36, height: 36, borderRadius: '50%',
-                    backgroundColor: avatarColor,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, color: '#FFFFFF', fontWeight: 700,
-                }}>
-                    {avatarLetter}
-                </div>
+                {avatarUrl ? (
+                    <img src={avatarUrl} alt="" style={{
+                        width: 36, height: 36, borderRadius: '50%', objectFit: 'cover',
+                    }} />
+                ) : (
+                    <div style={{
+                        width: 36, height: 36, borderRadius: '50%',
+                        backgroundColor: avatarColor,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, color: '#FFFFFF', fontWeight: 700,
+                    }}>
+                        {avatarLetter}
+                    </div>
+                )}
                 {unread > 0 && (
                     <span style={{
                         position: 'absolute', top: -2, right: -2,
@@ -508,7 +553,7 @@ function ZoneGroupHeader({ zone, isExpanded, onToggle }) {
                     fontSize: 10, marginTop: 2, fontFamily: 'Noto Sans TC, sans-serif',
                     color: isFull ? '#C0392B' : '#B0A89A', fontWeight: isFull ? 600 : 400,
                 }}>
-                    收藏家 {zone.collectorCount}/{zone.totalSlots}{isFull ? '  ·  已額滿' : ''}
+                    私藏家 {zone.collectorCount}/{zone.totalSlots}{isFull ? '  ·  已額滿' : ''}
                 </div>
             </div>
             <div style={{ color: '#B0A89A', flexShrink: 0 }}>
@@ -565,19 +610,32 @@ function normalizeZoneChats(chats, myUserID) {
                 zoneTitle,
                 totalSlots: chat.zone_total_slots ?? 0,
                 collectorCount: chat.zone_collector_count ?? 0,
+                sellerId: chat.zone_seller_id || '',
                 chats: [],
             }
         }
+
+        // 解析後端交易資料
+        const rawTx = chat.transaction
+        const hasTx = !!rawTx
+        const tx = hasTx ? {
+            status: rawTx.status,
+            updatedAt: new Date(rawTx.status_updated_at).getTime(),
+            buyerReviewed: rawTx.buyer_reviewed ?? false,
+            sellerReviewed: rawTx.seller_reviewed ?? false,
+        } : null
+
         zoneMap[zoneId].chats.push({
             id: chat.id,
+            applicationId: chat.application_id || null,
             peer: peerProfile?.username || peerProfile?.display_name || '對方',
             avatarUrl: peerProfile?.avatar_url || null,
             avatarColor: '#8C8479',
             lastMsg: '',
-            status: '對話中',
-            statusColor: '#C4A882',
-            role: '買家',
-            tx: null,
+            status: hasTx ? '私藏家' : '對話中',
+            statusColor: hasTx ? '#4CAF50' : '#C4A882',
+            role: hasTx ? '私藏家' : '買家',
+            tx,
             unread: chat.unread_count ?? 0,
         })
     }
@@ -589,15 +647,25 @@ function normalizeZoneChats(chats, myUserID) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Chat() {
     const { currentUser } = useAuth()
-    const myUserID = currentUser?.user_id || ''
-    const VIEWER_ROLE = 'seller' // TODO: 從 Zone chat 的參與者角色動態判斷
+    const myUserID = currentUser?.id || ''
 
     const isMobile = useIsMobile()
     const navigate = useNavigate()
+    const location = useLocation()
+    const [searchParams] = useSearchParams()
     const [mobileView, setMobileView] = useState('list') // 'list' | 'chat'
 
-    const [sidebarTab, setSidebarTab] = useState('zone')
-    const [selectedId, setSelectedId] = useState(null)
+    // URL 參數：?id= 為 DM，?chat= 為 Zone chat（點擊 sidebar 會更新）
+    const targetChatId = searchParams.get('id')       // DM
+    const targetZoneChat = searchParams.get('chat')   // Zone chat
+    // peerName hint 從 navigate state 傳入（Profile.jsx 私訊按鈕）
+    const peerNameHint = location.state?.peerName || null
+
+    const initTab = targetChatId ? 'dm' : 'zone'
+    const initSelected = targetChatId || targetZoneChat || null
+
+    const [sidebarTab, setSidebarTab] = useState(initTab)
+    const [selectedId, setSelectedId] = useState(initSelected)
     const [input, setInput] = useState('')
     const [messages, setMessages] = useState({})      // chatId -> msg[]
     const [loadingMsgs, setLoadingMsgs] = useState(false)
@@ -611,8 +679,16 @@ export default function Chat() {
     const [confirmTx, setConfirmTx] = useState(null)
     const [reviewTarget, setReviewTarget] = useState(null)
     const [closedZone, setClosedZone] = useState(null)
+    const [toast, setToast] = useState(null)          // { message, type }
+    const [settingCollector, setSettingCollector] = useState(false) // loading guard
+
+    const showToast = useCallback((message, type = 'error') => {
+        setToast({ message, type })
+    }, [])
 
     const bottomRef = useRef(null)
+    const msgContainerRef = useRef(null)
+    const isUserNearBottom = useRef(true)
 
     // ── 載入 Zone / DM 列表 ───────────────────────────────────────────────────
     const loadList = useCallback(async () => {
@@ -632,9 +708,10 @@ export default function Chat() {
                 const raw = res.data.data || []
                 const normalized = raw.map(c => normalizeDMChat(c, myUserID))
                 setDmChats(normalized)
-                if (!selectedId && normalized.length > 0) {
-                    setSelectedId(normalized[0].id)
-                }
+                // ?id= 優先，否則選第一筆
+                const autoId = targetChatId || (!selectedId && normalized.length > 0 ? normalized[0].id : null)
+                if (autoId) setSelectedId(autoId)
+                if (isMobile && autoId) setMobileView('chat')
             }
         } catch (e) {
             console.error('載入聊天列表失敗', e)
@@ -664,9 +741,17 @@ export default function Chat() {
     }, [myUserID])
 
     useEffect(() => {
-        if (selectedId) loadMessages(selectedId)
-    }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+        if (selectedId && myUserID) loadMessages(selectedId)
+    }, [selectedId, loadMessages]) // loadMessages 依賴 myUserID，auth ready 後自動重跑
 
+    // ── 輪詢：每 5 秒靜默重載訊息（WebSocket 前的過渡方案） ──────────────────
+    useEffect(() => {
+        if (!selectedId || !myUserID) return
+        const intervalId = setInterval(() => {
+            loadMessages(selectedId)
+        }, 5000)
+        return () => clearInterval(intervalId)
+    }, [selectedId, myUserID, loadMessages])
 
     // ── Derived ──────────────────────────────────────────────────────────────
     function findZoneChat(id) {
@@ -680,11 +765,18 @@ export default function Chat() {
     const currentMsgs = messages[selectedId] || []
     const zoneChatMeta = findZoneChat(selectedId)
     const dmChatMeta = dmChats.find(d => d.id === selectedId)
-    const activeChatMeta = zoneChatMeta?.chat || dmChatMeta
+    // DM list 尚未載入時，用 peerNameHint 建立暫時 meta，讓聊天視窗立即可用
+    const fallbackMeta = (targetChatId && selectedId === targetChatId && !dmChatMeta && peerNameHint)
+        ? { id: targetChatId, peer: peerNameHint, avatarColor: '#C4A882' }
+        : null
+    const activeChatMeta = zoneChatMeta?.chat || dmChatMeta || fallbackMeta
     const peerColor = activeChatMeta?.avatarColor || '#C4A882'
+    const peerAvatarUrl = activeChatMeta?.avatarUrl || null
 
     const isZoneChat = !!zoneChatMeta
-    const canSetCollector = isZoneChat && zoneChatMeta.chat.status === '對話中'
+    const isSeller = isZoneChat && zoneChatMeta.zone.sellerId === myUserID
+    const viewerRole = isSeller ? 'seller' : 'buyer'
+    const canSetCollector = isZoneChat && isSeller && zoneChatMeta.chat.status === '對話中'
     const hasTransaction = isZoneChat && !!zoneChatMeta.chat.tx
 
     // ── 傳送訊息（API） ────────────────────────────────────────────────────────
@@ -705,7 +797,16 @@ export default function Chat() {
     const selectTab = (tab) => {
         setSidebarTab(tab)
         setSelectedId(null)
+        navigate('/chat', { replace: true })  // 切換 tab 時清除 ?id=
         if (isMobile) setMobileView('list')
+    }
+
+    // 選擇對話時同步更新 URL，重整後可還原
+    const selectChat = (id, tab) => {
+        setSelectedId(id)
+        const params = tab === 'dm' ? `?id=${id}` : `?chat=${id}`
+        navigate(`/chat${params}`, { replace: true })
+        if (isMobile) setMobileView('chat')
     }
 
     const toggleZone = (zoneId) => {
@@ -717,33 +818,50 @@ export default function Chat() {
         })
     }
 
-    // ── 設為收藏家 ───────────────────────────────────────────────────────────
-    const confirmSetCollector = () => {
-        if (!confirmCollector) return
-        const { chatId, zoneId, peerName } = confirmCollector
+    // ── 設為私藏家 ───────────────────────────────────────────────────────────
+    const confirmSetCollector = async () => {
+        if (!confirmCollector || settingCollector) return
+        const { chatId, zoneId, peerName, applicationId } = confirmCollector
         setConfirmCollector(null)
 
-        let zoneClosed = false, closedTitle = ''
-        setZoneChats(prev => prev.map(z => {
-            if (z.zoneId !== zoneId) return z
-            const newCount = z.collectorCount + 1
-            if (newCount >= z.totalSlots) { zoneClosed = true; closedTitle = z.zoneTitle }
-            return {
-                ...z, collectorCount: newCount,
-                chats: z.chats.map(c => c.id === chatId
-                    ? {
-                        ...c, status: '收藏家', statusColor: '#4CAF50', role: '收藏家',
-                        tx: { status: 'pending_payment', updatedAt: Date.now(), buyerReviewed: false, sellerReviewed: false },
-                    }
-                    : c
-                ),
+        if (!applicationId) {
+            showToast('無法取得申請資料，請重新整理頁面後再試')
+            return
+        }
+
+        setSettingCollector(true)
+        try {
+            const res = await zoneApi.setCollector(zoneId, applicationId)
+            const { accepted_count, zone_closed } = res.data.data || res.data
+
+            setZoneChats(prev => prev.map(z => {
+                if (z.zoneId !== zoneId) return z
+                return {
+                    ...z, collectorCount: accepted_count ?? (z.collectorCount + 1),
+                    chats: z.chats.map(c => c.id === chatId
+                        ? {
+                            ...c, status: '私藏家', statusColor: '#4CAF50', role: '私藏家',
+                            tx: { status: 'pending', updatedAt: Date.now(), buyerReviewed: false, sellerReviewed: false },
+                        }
+                        : c
+                    ),
+                }
+            }))
+
+            addSysMsg(chatId, `✅ ${peerName} 已被設為私藏家`)
+            addSysMsg(chatId, '💳 交易已建立，等待買家付款')
+            showToast(`${peerName} 已成為私藏家`, 'success')
+
+            if (zone_closed) {
+                const matchedZone = zoneChats.find(z => z.zoneId === zoneId)
+                setTimeout(() => setClosedZone(matchedZone?.zoneTitle || '私藏'), 300)
             }
-        }))
-
-        addSysMsg(chatId, `✅ ${peerName} 已被設為收藏家`)
-        addSysMsg(chatId, '💳 交易已建立，等待買家付款')
-
-        if (zoneClosed) setTimeout(() => setClosedZone(closedTitle), 300)
+        } catch (err) {
+            console.error('設為私藏家失敗', err)
+            showToast(extractErrorMessage(err))
+        } finally {
+            setSettingCollector(false)
+        }
     }
 
     // ── 交易狀態操作 ──────────────────────────────────────────────────────────
@@ -758,17 +876,17 @@ export default function Chat() {
         }
 
         const TX_CONFIRM = {
-            'pending_payment→paid': {
+            'pending→shipping': {
                 label: '確認已付款',
                 desc: '請確認你已完成付款。此操作無法撤銷，賣家將收到通知開始準備寄出商品。',
                 color: '#1C1A18',
             },
-            'paid→shipped': {
+            'shipping→received': {
                 label: '確認已寄出',
                 desc: '請確認商品已交給物流，買家將收到通知準備收貨。',
                 color: '#1C1A18',
             },
-            'shipped→completed': {
+            'received→completed': {
                 label: '確認收貨',
                 desc: '確認商品已收到且無問題。確認後將觸發評價流程。',
                 color: '#2D7A4A',
@@ -785,8 +903,8 @@ export default function Chat() {
 
         const nextStatus = action.split('→')[1]
         const sysTexts = {
-            paid: '💳 買家已確認付款，請準備寄出商品',
-            shipped: '📦 賣家已寄出商品，請注意查收',
+            shipping: '💳 買家已確認付款，請準備寄出商品',
+            received: '📦 賣家已寄出商品，請注意查收',
             completed: '🎉 交易完成！感謝你的參與',
         }
 
@@ -826,8 +944,8 @@ export default function Chat() {
                 ? {
                     ...c, tx: {
                         ...c.tx,
-                        sellerReviewed: VIEWER_ROLE === 'seller' ? true : c.tx?.sellerReviewed,
-                        buyerReviewed: VIEWER_ROLE === 'buyer' ? true : c.tx?.buyerReviewed,
+                        sellerReviewed: viewerRole === 'seller' ? true : c.tx?.sellerReviewed,
+                        buyerReviewed: viewerRole === 'buyer' ? true : c.tx?.buyerReviewed,
                     }
                 }
                 : c
@@ -844,7 +962,9 @@ export default function Chat() {
     }
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        if (isUserNearBottom.current) {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
     }, [currentMsgs])
 
     useEffect(() => {
@@ -855,7 +975,7 @@ export default function Chat() {
 
     // ─────────────────────────────────────────────────────────────────────────
     return (
-        <div style={{ height: 'calc(100vh - 60px)', display: 'flex', backgroundColor: '#F2EDE6' }}>
+        <div style={{ height: isMobile ? 'calc(100dvh - 124px)' : 'calc(100vh - 60px)', display: 'flex', backgroundColor: '#F2EDE6', overflow: 'hidden' }}>
 
             {/* ═══ SIDEBAR ═══ */}
             <div style={{
@@ -887,6 +1007,7 @@ export default function Chat() {
                                     key={c.id}
                                     avatarLetter={c.peer[0].toUpperCase()}
                                     avatarColor={c.avatarColor}
+                                    avatarUrl={c.avatarUrl || null}
                                     title={c.peer}
                                     subtitle={c.lastMsg}
                                     badge={c.tx ? (TX_STEPS[TX_STEP_INDEX[c.tx.status]]?.label || c.status) : c.status}
@@ -896,13 +1017,11 @@ export default function Chat() {
                                     unread={c.unread || 0}
                                     selected={selectedId === c.id}
                                     onClick={() => {
-                                        setSelectedId(c.id)
-                                        // 清零未讀
+                                        selectChat(c.id, 'zone')
                                         setZoneChats(prev => prev.map(z => ({
                                             ...z,
                                             chats: z.chats.map(ch => ch.id === c.id ? { ...ch, unread: 0 } : ch)
                                         })))
-                                        if (isMobile) setMobileView('chat')
                                     }}
                                 />
                             ))}
@@ -920,14 +1039,12 @@ export default function Chat() {
                             key={d.id}
                             avatarLetter={(d.peer || '?')[0].toUpperCase()}
                             avatarColor={d.avatarColor}
+                            avatarUrl={d.avatarUrl || null}
                             title={d.peer} subtitle={d.lastMsg || ''}
                             badge={d.time || ''} badgeColor="#D4CCC4"
                             unread={d.unread || 0}
                             selected={selectedId === d.id}
-                            onClick={() => {
-                                setSelectedId(d.id)
-                                if (isMobile) setMobileView('chat')
-                            }}
+                            onClick={() => selectChat(d.id, 'dm')}
                         />
                     ))}
                 </div>
@@ -938,7 +1055,7 @@ export default function Chat() {
             {activeChatMeta && (
                 <div style={{
                     flex: 1, display: (isMobile && mobileView === 'list') ? 'none' : 'flex',
-                    flexDirection: 'column', minWidth: 0
+                    flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden',
                 }}>
 
                     {/* Header */}
@@ -956,14 +1073,20 @@ export default function Chat() {
                                 <ArrowLeft size={20} strokeWidth={1.5} />
                             </button>
                         )}
-                        <div style={{
-                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                            backgroundColor: peerColor,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 13, color: '#FFFFFF', fontWeight: 700,
-                        }}>
-                            {activeChatMeta.peer[0].toUpperCase()}
-                        </div>
+                        {peerAvatarUrl ? (
+                            <img src={peerAvatarUrl} alt={activeChatMeta.peer} style={{
+                                width: 36, height: 36, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
+                            }} />
+                        ) : (
+                            <div style={{
+                                width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                                backgroundColor: peerColor,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 13, color: '#FFFFFF', fontWeight: 700,
+                            }}>
+                                {activeChatMeta.peer[0].toUpperCase()}
+                            </div>
+                        )}
                         <div style={{ flex: 1 }}>
                             <div
                                 onClick={() => navigate(`/profile/${activeChatMeta.peer}`)}
@@ -973,14 +1096,9 @@ export default function Chat() {
                             >
                                 {activeChatMeta.peer}
                             </div>
-                            <div style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                                {zoneChatMeta
-                                    ? `${zoneChatMeta.zone.zoneTitle} · ${zoneChatMeta.chat.role}`
-                                    : '私訊'}
-                            </div>
                         </div>
 
-                        {/* 收藏家 badge (若有交易則用 tx status) */}
+                        {/* 私藏家 badge (若有交易則用 tx status) */}
                         {zoneChatMeta && !hasTransaction && (
                             <span style={{
                                 fontSize: 12, fontWeight: 600, padding: '5px 12px', borderRadius: 16,
@@ -991,21 +1109,29 @@ export default function Chat() {
                             </span>
                         )}
 
-                        {/* 設為收藏家 */}
+                        {/* 設為私藏家 */}
                         {canSetCollector && (
-                            <button onClick={() => setConfirmCollector({
-                                chatId: selectedId,
-                                zoneId: zoneChatMeta.zone.zoneId,
-                                peerName: zoneChatMeta.chat.peer,
-                            })} style={{
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '8px 16px', borderRadius: 8, border: 'none',
-                                backgroundColor: '#1C1A18', color: '#F2EDE6',
-                                fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
-                                cursor: 'pointer', flexShrink: 0,
-                            }}>
+                            <button
+                                disabled={settingCollector}
+                                onClick={() => setConfirmCollector({
+                                    chatId: selectedId,
+                                    zoneId: zoneChatMeta.zone.zoneId,
+                                    peerName: zoneChatMeta.chat.peer,
+                                    applicationId: zoneChatMeta.chat.applicationId,
+                                })}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '8px 16px', borderRadius: 8, border: 'none',
+                                    backgroundColor: settingCollector ? '#8C8479' : '#1C1A18',
+                                    color: '#F2EDE6',
+                                    fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
+                                    cursor: settingCollector ? 'not-allowed' : 'pointer',
+                                    flexShrink: 0, opacity: settingCollector ? 0.7 : 1,
+                                    transition: 'opacity 0.15s, background-color 0.15s',
+                                }}
+                            >
                                 <UserCheck size={14} strokeWidth={1.8} />
-                                設為收藏家
+                                {settingCollector ? '處理中…' : '設為私藏家'}
                             </button>
                         )}
                     </div>
@@ -1019,33 +1145,36 @@ export default function Chat() {
                             borderBottom: '1px solid #F0EBE3',
                         }}>
                             <span>
-                                {zoneChatMeta.chat.status === '收藏家'
-                                    ? '🎉 此帳號已成為收藏家'
-                                    : 'ℹ️ 對話確認後，可將買家設為收藏家以完成交易'}
+                                {zoneChatMeta.chat.status === '私藏家'
+                                    ? '🎉 此帳號已成為私藏家'
+                                    : 'ℹ️ 對話確認後，可將買家設為私藏家以完成交易'}
                             </span>
                             <span style={{ fontWeight: 600, color: '#C4A882' }}>
-                                收藏家 {zoneChatMeta.zone.collectorCount}/{zoneChatMeta.zone.totalSlots}
+                                私藏家 {zoneChatMeta.zone.collectorCount}/{zoneChatMeta.zone.totalSlots}
                             </span>
                         </div>
                     )}
 
-                    {/* TransactionBar（成為收藏家後顯示） */}
+                    {/* TransactionBar（成為私藏家後顯示） */}
                     {hasTransaction && (
                         <TransactionBar
                             tx={zoneChatMeta.chat.tx}
                             peerName={zoneChatMeta.chat.peer}
-                            viewerRole={VIEWER_ROLE}
+                            viewerRole={viewerRole}
                             onAction={handleTxAction}
                         />
                     )}
 
                     {/* Messages */}
-                    <div style={{
+                    <div ref={msgContainerRef} onScroll={() => {
+                        const el = msgContainerRef.current
+                        if (el) isUserNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+                    }} style={{
                         flex: 1, overflowY: 'auto', padding: 24,
                         display: 'flex', flexDirection: 'column', gap: 16,
                     }}>
                         {currentMsgs.map(msg => (
-                            <Bubble key={msg.id} msg={msg} peerColor={peerColor} />
+                            <Bubble key={msg.id} msg={msg} peerColor={peerColor} peerAvatarUrl={peerAvatarUrl} />
                         ))}
                         <div ref={bottomRef} />
                     </div>
@@ -1063,7 +1192,7 @@ export default function Chat() {
                             <input
                                 value={input}
                                 onChange={e => setInput(e.target.value)}
-                                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && handleSend()}
                                 placeholder="輸入訊息..."
                                 style={{
                                     flex: 1, border: 'none', outline: 'none',
@@ -1093,12 +1222,12 @@ export default function Chat() {
 
             {/* ── Dialogs ─────────────────────────────────────────────── */}
 
-            {/* 設為收藏家確認 */}
+            {/* 設為私藏家確認 */}
             {confirmCollector && (
                 <ConfirmDialog
                     icon={<div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#F0F9F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserCheck size={18} color="#2D7A4A" strokeWidth={1.8} /></div>}
-                    title="設為收藏家？"
-                    desc={`確認將 <strong>${confirmCollector.peerName}</strong> 設為本私藏的收藏家。<br/>若收藏名額已滿，該私藏將自動結束。`}
+                    title="設為私藏家？"
+                    desc={`確認將 <strong>${confirmCollector.peerName}</strong> 設為本私藏的私藏家。<br/>若收藏名額已滿，該私藏將自動結束。`}
                     confirmLabel="確認設定"
                     confirmColor="#2D7A4A"
                     onConfirm={confirmSetCollector}
@@ -1129,6 +1258,18 @@ export default function Chat() {
 
             {/* 私藏結束 Banner */}
             {closedZone && <ZoneClosedBanner zoneTitle={closedZone} />}
+
+            {/* Toast 通知 */}
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
         </div>
     )
 }
+
+// ── Exports for testing ──────────────────────────────────────────────────────
+export { normalizeMsg, normalizeDMChat, normalizeZoneChats }
