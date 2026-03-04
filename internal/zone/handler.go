@@ -106,6 +106,15 @@ func (h *Handler) CreateZone(c *gin.Context) {
 		MinCreditScore: req.MinCreditScore,
 	}
 
+	if req.EndsAt != nil && *req.EndsAt != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.EndsAt)
+		if err != nil {
+			response.BadRequest(c, "INVALID_DATE", "ends_at 格式錯誤，請使用 ISO 8601")
+			return
+		}
+		zone.EndsAt = &parsed
+	}
+
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&zone).Error; err != nil {
 			return err
@@ -133,6 +142,7 @@ type UpdateZoneRequest struct {
 	Description    *string             `json:"description"`
 	Category       *model.ZoneCategory `json:"category"`
 	MinCreditScore *int                `json:"min_credit_score"`
+	EndsAt         *string             `json:"ends_at"`
 }
 
 // PATCH /zones/:zoneId
@@ -165,6 +175,18 @@ func (h *Handler) UpdateZone(c *gin.Context) {
 	if req.MinCreditScore != nil {
 		updates["min_credit_score"] = *req.MinCreditScore
 	}
+	if req.EndsAt != nil {
+		if *req.EndsAt == "" {
+			updates["ends_at"] = nil
+		} else {
+			parsed, err := time.Parse(time.RFC3339, *req.EndsAt)
+			if err != nil {
+				response.BadRequest(c, "INVALID_DATE", "ends_at 格式錯誤，請使用 ISO 8601")
+				return
+			}
+			updates["ends_at"] = parsed
+		}
+	}
 	if len(updates) > 0 {
 		database.DB.Model(&zone).Updates(updates)
 	}
@@ -173,7 +195,7 @@ func (h *Handler) UpdateZone(c *gin.Context) {
 	response.OK(c, zone)
 }
 
-// DELETE /zones/:zoneId
+// DELETE /zones/:zoneId（軟關閉：status → ended）
 func (h *Handler) DeleteZone(c *gin.Context) {
 	userID, _ := middleware.GetUserID(c)
 	zoneID := c.Param("zoneId")
@@ -184,18 +206,15 @@ func (h *Handler) DeleteZone(c *gin.Context) {
 		return
 	}
 	if zone.SellerID != userID {
-		response.Forbidden(c, "FORBIDDEN", "無法刪除他人 Zone")
+		response.Forbidden(c, "FORBIDDEN", "無法關閉他人 Zone")
+		return
+	}
+	if zone.Status == model.ZoneStatusEnded {
+		response.UnprocessableEntity(c, "ALREADY_CLOSED", "此 Zone 已關閉")
 		return
 	}
 
-	if err := database.DB.Transaction(func(tx *gorm.DB) error {
-		tx.Exec("DELETE FROM zone_tags WHERE zone_id = ?", zoneID)
-		tx.Delete(&model.ZonePhoto{}, "zone_id = ?", zoneID)
-		return tx.Delete(&zone).Error
-	}); err != nil {
-		response.InternalError(c)
-		return
-	}
+	database.DB.Model(&zone).Update("status", model.ZoneStatusEnded)
 	response.NoContent(c)
 }
 
@@ -214,7 +233,7 @@ func (h *Handler) GetMyApplications(c *gin.Context) {
 	}
 	if len(zoneIDs) > 0 {
 		var zones []model.Zone
-		database.DB.Where("id IN ?", zoneIDs).Find(&zones)
+		database.DB.Preload("Photos").Where("id IN ?", zoneIDs).Find(&zones)
 		zoneMap := make(map[string]*model.Zone, len(zones))
 		for i := range zones {
 			zoneMap[zones[i].ID] = &zones[i]
@@ -265,9 +284,17 @@ func (h *Handler) Apply(c *gin.Context) {
 		return
 	}
 
+	// 重複申請檢查
+	var existingCount int64
+	database.DB.Model(&model.ZoneApplication{}).Where("zone_id = ? AND applicant_id = ?", zoneID, userID).Count(&existingCount)
+	if existingCount > 0 {
+		response.Conflict(c, "ALREADY_APPLIED", "已申請過此 Zone")
+		return
+	}
+
 	app := model.ZoneApplication{ZoneID: zoneID, ApplicantID: userID, Intro: req.Intro}
 	if err := database.DB.Create(&app).Error; err != nil {
-		response.Conflict(c, "ALREADY_APPLIED", "已申請過此 Zone")
+		response.InternalError(c)
 		return
 	}
 	response.Created(c, app)
@@ -356,18 +383,12 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 
 	now := time.Now()
 	if req.Action == "approve" {
-		if zone.AcceptedCount >= zone.TotalSlots {
-			response.UnprocessableEntity(c, "ZONE_FULL", "Zone 名額已滿")
-			return
-		}
-		// 原子操作：更新申請狀態 + 名額計數 + 建立 Chat + Transaction
+		// 原子操作：更新申請狀態 + 建立 Chat
+		// Transaction 和 accepted_count 在賣家點擊「設為私藏家」時才處理
 		if err := database.DB.Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&app).Updates(map[string]interface{}{
 				"status": model.ApplicationApproved, "reviewed_at": now,
 			}).Error; err != nil {
-				return err
-			}
-			if err := tx.Model(&zone).UpdateColumn("accepted_count", gorm.Expr("accepted_count + 1")).Error; err != nil {
 				return err
 			}
 			chat := model.Chat{Type: model.ChatTypeZone, ZoneID: &zoneID, ApplicationID: &app.ID}
@@ -377,14 +398,7 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 			if err := tx.Create(&model.ChatParticipant{ChatID: chat.ID, UserID: zone.SellerID}).Error; err != nil {
 				return err
 			}
-			if err := tx.Create(&model.ChatParticipant{ChatID: chat.ID, UserID: app.ApplicantID}).Error; err != nil {
-				return err
-			}
-			return tx.Create(&model.Transaction{
-				ApplicationID: app.ID,
-				BuyerID:       app.ApplicantID,
-				SellerID:      zone.SellerID,
-			}).Error
+			return tx.Create(&model.ChatParticipant{ChatID: chat.ID, UserID: app.ApplicantID}).Error
 		}); err != nil {
 			response.InternalError(c)
 			return
@@ -396,6 +410,86 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 	}
 
 	response.NoContent(c)
+}
+
+// ── Set Collector ────────────────────────────────────────────────────────────
+
+type SetCollectorRequest struct {
+	ApplicationID string `json:"application_id" binding:"required"`
+}
+
+// POST /zones/:zoneId/set-collector
+func (h *Handler) SetCollector(c *gin.Context) {
+	userID, _ := middleware.GetUserID(c)
+	zoneID := c.Param("zoneId")
+
+	var zone model.Zone
+	if err := database.DB.First(&zone, "id = ?", zoneID).Error; err != nil {
+		response.NotFound(c, "Zone 不存在")
+		return
+	}
+	if zone.SellerID != userID {
+		response.Forbidden(c, "FORBIDDEN", "僅賣家可設定私藏家")
+		return
+	}
+	if zone.Status == model.ZoneStatusEnded {
+		response.UnprocessableEntity(c, "ZONE_CLOSED", "此 Zone 已關閉")
+		return
+	}
+	if zone.AcceptedCount >= zone.TotalSlots {
+		response.UnprocessableEntity(c, "ZONE_FULL", "私藏家名額已滿")
+		return
+	}
+
+	var req SetCollectorRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	var app model.ZoneApplication
+	if err := database.DB.First(&app, "id = ? AND zone_id = ?", req.ApplicationID, zoneID).Error; err != nil {
+		response.NotFound(c, "申請不存在")
+		return
+	}
+	if app.Status != model.ApplicationApproved {
+		response.UnprocessableEntity(c, "NOT_APPROVED", "此申請尚未通過審核")
+		return
+	}
+	if app.IsCollector {
+		response.UnprocessableEntity(c, "ALREADY_COLLECTOR", "此買家已是私藏家")
+		return
+	}
+
+	// 原子操作：標記私藏家 + 名額 +1 + 建立 Transaction
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&app).Update("is_collector", true).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&zone).UpdateColumn("accepted_count", gorm.Expr("accepted_count + 1")).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.Transaction{
+			ApplicationID: app.ID,
+			BuyerID:       app.ApplicantID,
+			SellerID:      zone.SellerID,
+		}).Error
+	}); err != nil {
+		response.InternalError(c)
+		return
+	}
+
+	// 若名額已滿，自動關閉 Zone
+	zoneClosed := (zone.AcceptedCount + 1) >= zone.TotalSlots
+	if zoneClosed {
+		database.DB.Model(&zone).Update("status", model.ZoneStatusEnded)
+	}
+
+	response.OK(c, gin.H{
+		"is_collector":   true,
+		"zone_closed":    zoneClosed,
+		"accepted_count": zone.AcceptedCount + 1,
+	})
 }
 
 // batchLoadProfiles 批次載入 UserProfile，回傳 userID → *UserProfile 的 map

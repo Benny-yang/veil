@@ -187,6 +187,7 @@ func main() {
 			auth.DELETE("/zones/:zoneId/apply", zoneH.CancelApply)
 			auth.GET("/zones/:zoneId/applications", zoneH.GetApplications)
 			auth.PATCH("/zones/:zoneId/applications/:appId", zoneH.ReviewApplication)
+			auth.POST("/zones/:zoneId/set-collector", zoneH.SetCollector)
 
 			// Chats
 			auth.GET("/chats/zones", chatH.GetZoneChats)

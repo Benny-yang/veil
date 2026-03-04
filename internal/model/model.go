@@ -265,7 +265,8 @@ type ZoneApplication struct {
 	ApplicantID string            `gorm:"type:varchar(36);not null;index" json:"applicant_id"`
 	Intro       string            `gorm:"type:text" json:"intro"`
 	Status      ApplicationStatus `gorm:"type:enum('pending','approved','rejected');default:'pending'" json:"status"`
-	AppliedAt   time.Time         `json:"applied_at"`
+	IsCollector bool              `gorm:"default:false" json:"is_collector"`
+	AppliedAt   time.Time         `gorm:"autoCreateTime" json:"applied_at"`
 	ReviewedAt  *time.Time        `json:"reviewed_at,omitempty"`
 	Applicant   *UserProfile      `gorm:"-" json:"applicant,omitempty"`
 	Zone        *Zone             `gorm:"-" json:"zone,omitempty"`
@@ -274,6 +275,9 @@ type ZoneApplication struct {
 func (z *ZoneApplication) BeforeCreate(tx *gorm.DB) error {
 	if z.ID == "" {
 		z.ID = newUUID()
+	}
+	if z.AppliedAt.IsZero() {
+		z.AppliedAt = time.Now()
 	}
 	return nil
 }
@@ -356,6 +360,15 @@ type Chat struct {
 	ApplicationID *string           `gorm:"type:varchar(36);index" json:"application_id,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`
 	Participants  []ChatParticipant `gorm:"foreignKey:ChatID" json:"participants,omitempty"`
+
+	// 虛擬欄位：Zone 資訊（由 handler 填入，不存 DB）
+	ZoneTitle          string `gorm:"-" json:"zone_title,omitempty"`
+	ZoneTotalSlots     int    `gorm:"-" json:"zone_total_slots"`
+	ZoneCollectorCount int    `gorm:"-" json:"zone_collector_count"`
+	ZoneSellerID       string `gorm:"-" json:"zone_seller_id,omitempty"`
+
+	// 虛擬欄位：交易資訊（由 handler 填入，不存 DB）
+	Transaction *Transaction `gorm:"-" json:"transaction,omitempty"`
 }
 
 func (c *Chat) BeforeCreate(tx *gorm.DB) error {

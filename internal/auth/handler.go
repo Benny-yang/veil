@@ -39,12 +39,13 @@ type TokenResponse struct {
 }
 
 type UserSummary struct {
-	ID          string  `json:"id"`
-	Email       string  `json:"email"`
-	Username    string  `json:"username"`
-	DisplayName string  `json:"display_name"`
-	AvatarURL   *string `json:"avatar_url"`
-	AvatarColor string  `json:"avatar_color"`
+	ID                  string  `json:"id"`
+	Email               string  `json:"email"`
+	Username            string  `json:"username"`
+	DisplayName         string  `json:"display_name"`
+	AvatarURL           *string `json:"avatar_url"`
+	AvatarColor         string  `json:"avatar_color"`
+	OnboardingCompleted bool    `json:"onboarding_completed"`
 }
 
 type RefreshRequest struct {
@@ -484,11 +485,12 @@ func (h *Handler) signToken(userID, tokenType string, expiry time.Duration) (str
 
 func toUserSummary(u *model.User, p *model.UserProfile) UserSummary {
 	return UserSummary{
-		ID:          u.ID,
-		Email:       u.Email,
-		Username:    p.Username,
-		DisplayName: p.DisplayName,
-		AvatarURL:   p.AvatarURL,
-		AvatarColor: p.AvatarColor,
+		ID:                  u.ID,
+		Email:               u.Email,
+		Username:            p.Username,
+		DisplayName:         p.DisplayName,
+		AvatarURL:           p.AvatarURL,
+		AvatarColor:         p.AvatarColor,
+		OnboardingCompleted: u.OnboardingCompleted,
 	}
 }

@@ -36,6 +36,66 @@ func (h *Handler) GetZoneChats(c *gin.Context) {
 	if len(chatIDs) > 0 {
 		database.DB.Preload("Participants").Where("id IN ? AND type = ?", chatIDs, model.ChatTypeZone).Find(&chats)
 	}
+
+	// 補填每位參與者的 Profile
+	for i := range chats {
+		for j := range chats[i].Participants {
+			var profile model.UserProfile
+			if err := database.DB.Where("user_id = ?", chats[i].Participants[j].UserID).First(&profile).Error; err == nil {
+				chats[i].Participants[j].Profile = &profile
+			}
+		}
+	}
+
+	// 載入關聯的 Zone 資訊
+	zoneIDs := make([]string, 0, len(chats))
+	for _, c := range chats {
+		if c.ZoneID != nil {
+			zoneIDs = append(zoneIDs, *c.ZoneID)
+		}
+	}
+	if len(zoneIDs) > 0 {
+		var zones []model.Zone
+		database.DB.Where("id IN ?", zoneIDs).Find(&zones)
+		zoneMap := make(map[string]*model.Zone, len(zones))
+		for i := range zones {
+			zoneMap[zones[i].ID] = &zones[i]
+		}
+		for i := range chats {
+			if chats[i].ZoneID != nil {
+				if z, ok := zoneMap[*chats[i].ZoneID]; ok {
+					chats[i].ZoneTitle = z.Title
+					chats[i].ZoneTotalSlots = z.TotalSlots
+					chats[i].ZoneCollectorCount = z.AcceptedCount
+					chats[i].ZoneSellerID = z.SellerID
+				}
+			}
+		}
+	}
+
+	// 載入關聯的 Transaction 資訊
+	appIDs := make([]string, 0, len(chats))
+	for _, c := range chats {
+		if c.ApplicationID != nil {
+			appIDs = append(appIDs, *c.ApplicationID)
+		}
+	}
+	if len(appIDs) > 0 {
+		var txs []model.Transaction
+		database.DB.Where("application_id IN ?", appIDs).Find(&txs)
+		txMap := make(map[string]*model.Transaction, len(txs))
+		for i := range txs {
+			txMap[txs[i].ApplicationID] = &txs[i]
+		}
+		for i := range chats {
+			if chats[i].ApplicationID != nil {
+				if t, ok := txMap[*chats[i].ApplicationID]; ok {
+					chats[i].Transaction = t
+				}
+			}
+		}
+	}
+
 	response.OK(c, chats)
 }
 
@@ -294,18 +354,18 @@ func (h *Handler) UpdateTransaction(c *gin.Context) {
 }
 
 // isValidTransition 驗證交易狀態轉移是否合法
-// pending  → shipping   (僅 seller)
-// shipping → received   (僅 buyer)
-// received → completed  (buyer 或 seller)
+// pending  → shipping   (僅 buyer：確認付款)
+// shipping → received   (僅 seller：確認寄出)
+// received → completed  (僅 buyer：確認收貨)
 // pending/shipping/received → cancelled (buyer 或 seller)
 func isValidTransition(from, to model.TransactionStatus, isBuyer, isSeller bool) bool {
 	switch {
 	case from == model.TxPending && to == model.TxShipping:
-		return isSeller
-	case from == model.TxShipping && to == model.TxReceived:
 		return isBuyer
+	case from == model.TxShipping && to == model.TxReceived:
+		return isSeller
 	case from == model.TxReceived && to == model.TxCompleted:
-		return isBuyer || isSeller
+		return isBuyer
 	case to == model.TxCancelled && (from == model.TxPending || from == model.TxShipping || from == model.TxReceived):
 		return isBuyer || isSeller
 	default:

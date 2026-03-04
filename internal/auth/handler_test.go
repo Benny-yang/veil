@@ -187,6 +187,18 @@ func TestLogin_Success(t *testing.T) {
 	if data["access_token"] == "" {
 		t.Error("access_token 不應為空")
 	}
+
+	user, ok := data["user"].(map[string]interface{})
+	if !ok {
+		t.Fatal("回應中缺少 user 欄位")
+	}
+	onboardingCompleted, exists := user["onboarding_completed"]
+	if !exists {
+		t.Fatal("user 中缺少 onboarding_completed 欄位")
+	}
+	if onboardingCompleted != false {
+		t.Errorf("新帳號 onboarding_completed 應為 false，得到 %v", onboardingCompleted)
+	}
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
