@@ -29,10 +29,22 @@ func (h *Handler) GetReviews(c *gin.Context) {
 
 	var reviews []model.Review
 	database.DB.Where("reviewee_id = ?", profile.UserID).Order("created_at DESC").Find(&reviews)
+
+	// 批次撈 reviewer profile（避免 N+1）
+	reviewerIDs := make([]string, len(reviews))
+	for i, r := range reviews {
+		reviewerIDs[i] = r.ReviewerID
+	}
+	profileMap := make(map[string]*model.UserProfile)
+	if len(reviewerIDs) > 0 {
+		var profiles []model.UserProfile
+		database.DB.Where("user_id IN ?", reviewerIDs).Find(&profiles)
+		for i := range profiles {
+			profileMap[profiles[i].UserID] = &profiles[i]
+		}
+	}
 	for i := range reviews {
-		var reviewer model.UserProfile
-		database.DB.Where("user_id = ?", reviews[i].ReviewerID).First(&reviewer)
-		reviews[i].Reviewer = &reviewer
+		reviews[i].Reviewer = profileMap[reviews[i].ReviewerID]
 	}
 	response.OK(c, reviews)
 }

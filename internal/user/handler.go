@@ -2,7 +2,6 @@ package user
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/benny-yang/veil-api/internal/middleware"
@@ -114,7 +113,11 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		response.InternalError(c)
+		return
+	}
 	database.DB.Model(&user).Update("password_hash", string(hash))
 	response.NoContent(c)
 }
@@ -162,19 +165,27 @@ func (h *Handler) Follow(c *gin.Context) {
 		return
 	}
 
-	follow := model.Follow{FollowerID: callerID, FollowingID: target.UserID}
-	if err := database.DB.Create(&follow).Error; err != nil {
-		if strings.Contains(err.Error(), "Duplicate") {
-			response.Conflict(c, "ALREADY_FOLLOWING", "已追蹤此用戶")
-			return
-		}
-		response.InternalError(c)
+	// 先查是否已追蹤
+	var existingFollow model.Follow
+	if err := database.DB.Where("follower_id = ? AND following_id = ?", callerID, target.UserID).First(&existingFollow).Error; err == nil {
+		response.Conflict(c, "ALREADY_FOLLOWING", "已追蹤此用戶")
 		return
 	}
 
-	// 更新冗餘計數
-	database.DB.Model(&model.UserProfile{}).Where("user_id = ?", callerID).UpdateColumn("following_count", gorm.Expr("following_count + 1"))
-	database.DB.Model(&model.UserProfile{}).Where("user_id = ?", target.UserID).UpdateColumn("follower_count", gorm.Expr("follower_count + 1"))
+	// 原子操作：建立 follow + 更新計數
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		follow := model.Follow{FollowerID: callerID, FollowingID: target.UserID}
+		if err := tx.Create(&follow).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.UserProfile{}).Where("user_id = ?", callerID).UpdateColumn("following_count", gorm.Expr("following_count + 1")).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.UserProfile{}).Where("user_id = ?", target.UserID).UpdateColumn("follower_count", gorm.Expr("follower_count + 1")).Error
+	}); err != nil {
+		response.InternalError(c)
+		return
+	}
 
 	response.NoContent(c)
 }
@@ -190,14 +201,24 @@ func (h *Handler) Unfollow(c *gin.Context) {
 		return
 	}
 
-	result := database.DB.Delete(&model.Follow{}, "follower_id = ? AND following_id = ?", callerID, target.UserID)
-	if result.RowsAffected == 0 {
-		response.NotFound(c, "尚未追蹤此用戶")
+	// 原子操作：刪除 follow + 更新計數
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Delete(&model.Follow{}, "follower_id = ? AND following_id = ?", callerID, target.UserID)
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if err := tx.Model(&model.UserProfile{}).Where("user_id = ?", callerID).UpdateColumn("following_count", gorm.Expr("following_count - 1")).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.UserProfile{}).Where("user_id = ?", target.UserID).UpdateColumn("follower_count", gorm.Expr("follower_count - 1")).Error
+	}); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.NotFound(c, "尚未追蹤此用戶")
+			return
+		}
+		response.InternalError(c)
 		return
 	}
-
-	database.DB.Model(&model.UserProfile{}).Where("user_id = ?", callerID).UpdateColumn("following_count", gorm.Expr("following_count - 1"))
-	database.DB.Model(&model.UserProfile{}).Where("user_id = ?", target.UserID).UpdateColumn("follower_count", gorm.Expr("follower_count - 1"))
 
 	response.NoContent(c)
 }

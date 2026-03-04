@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/benny-yang/veil-api/pkg/response"
@@ -89,14 +88,11 @@ func OptionalAuth(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-// Require403 確保只有本人才能操作（用於 /users/me 等）
+// RequireSelf 確保只有本人才能操作（用於 /users/me 等）
 func RequireSelf(c *gin.Context, targetUserID string) bool {
 	callerID, ok := GetUserID(c)
 	if !ok || callerID != targetUserID {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"error":   gin.H{"code": "FORBIDDEN", "message": "無操作權限"},
-		})
+		response.Forbidden(c, "FORBIDDEN", "無操作權限")
 		c.Abort()
 		return false
 	}

@@ -105,12 +105,18 @@ func (h *Handler) Register(c *gin.Context) {
 	if err := db.Where("email = ?", req.Email).First(&existing).Error; err == nil {
 		response.Conflict(c, "EMAIL_TAKEN", "此信箱已被使用")
 		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		response.InternalError(c)
+		return
 	}
 
 	// 檢查 username 唯一
 	var existingProfile model.UserProfile
 	if err := db.Where("username = ?", req.Username).First(&existingProfile).Error; err == nil {
 		response.Conflict(c, "USERNAME_TAKEN", "此帳號名稱已被使用")
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		response.InternalError(c)
 		return
 	}
 

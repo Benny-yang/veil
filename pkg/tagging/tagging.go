@@ -2,6 +2,7 @@
 package tagging
 
 import (
+	"fmt"
 	"regexp"
 
 	"github.com/benny-yang/veil-api/internal/model"
@@ -25,13 +26,32 @@ func ExtractTags(text string) []string {
 	return tags
 }
 
+// 白名單：僅允許已知的 tag pivot 表名和欄位名
+var allowedTables = map[string]bool{
+	"work_tags": true,
+	"zone_tags": true,
+}
+
+var allowedColumns = map[string]bool{
+	"work_id": true,
+	"zone_id": true,
+}
+
 // UpsertTags 將 tagNames 寫入 tags 表，並建立 content 與 tag 的 join 記錄
-// tableName: "work_tags" 或 "post_tags"
-// contentIDCol: "work_id" 或 "post_id"
-// contentID: 對應的 work/post UUID
+// tableName: "work_tags" 或 "zone_tags"（白名單驗證）
+// contentIDCol: "work_id" 或 "zone_id"（白名單驗證）
+// contentID: 對應的 work/zone UUID
 func UpsertTags(tx *gorm.DB, tableName, contentIDCol, contentID string, tagNames []string) error {
 	if len(tagNames) == 0 {
 		return nil
+	}
+
+	// SQL injection 防禦：驗證 tableName 和 contentIDCol 為白名單值
+	if !allowedTables[tableName] {
+		return fmt.Errorf("tagging: 不允許的資料表名稱: %s", tableName)
+	}
+	if !allowedColumns[contentIDCol] {
+		return fmt.Errorf("tagging: 不允許的欄位名稱: %s", contentIDCol)
 	}
 
 	// 清除舊的關聯

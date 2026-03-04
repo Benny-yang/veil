@@ -23,12 +23,21 @@ func (h *Handler) ListZones(c *gin.Context) {
 	if tag := c.Query("tag"); tag != "" {
 		q = q.Joins("JOIN zone_tags zt ON zt.zone_id = zones.id JOIN tags t ON t.id = zt.tag_id AND t.name = ?", tag)
 	}
+	if category := c.Query("category"); category != "" {
+		q = q.Where("category = ?", category)
+	}
 	q.Order("created_at DESC").Find(&zones)
 
+	// 批次撈 seller profile（避免 N+1）
+	sellerIDs := make([]string, len(zones))
+	for i, z := range zones {
+		sellerIDs[i] = z.SellerID
+	}
+	profileMap := batchLoadProfiles(sellerIDs)
 	for i := range zones {
-		var profile model.UserProfile
-		database.DB.Where("user_id = ?", zones[i].SellerID).First(&profile)
-		zones[i].Seller = &profile
+		if p, ok := profileMap[zones[i].SellerID]; ok {
+			zones[i].Seller = p
+		}
 	}
 	response.OK(c, zones)
 }
@@ -60,12 +69,13 @@ func (h *Handler) GetMyZones(c *gin.Context) {
 }
 
 type CreateZoneRequest struct {
-	Title          string           `json:"title" binding:"required,min=1,max=100"`
-	Description    string           `json:"description"`
-	TotalSlots     int              `json:"total_slots" binding:"required,min=1"`
-	MinCreditScore int              `json:"min_credit_score"`
-	EndsAt         *string          `json:"ends_at"` // ISO 8601
-	Photos         []ZonePhotoInput `json:"photos"`
+	Title          string             `json:"title" binding:"required,min=1,max=100"`
+	Description    string             `json:"description"`
+	Category       model.ZoneCategory `json:"category"`
+	TotalSlots     int                `json:"total_slots" binding:"required,min=1"`
+	MinCreditScore int                `json:"min_credit_score"`
+	EndsAt         *string            `json:"ends_at"` // ISO 8601
+	Photos         []ZonePhotoInput   `json:"photos"`
 }
 
 type ZonePhotoInput struct {
@@ -83,10 +93,15 @@ func (h *Handler) CreateZone(c *gin.Context) {
 		return
 	}
 
+	category := req.Category
+	if category == "" {
+		category = model.ZoneCategoryOther
+	}
 	zone := model.Zone{
 		SellerID:       userID,
 		Title:          req.Title,
 		Description:    req.Description,
+		Category:       category,
 		TotalSlots:     req.TotalSlots,
 		MinCreditScore: req.MinCreditScore,
 	}
@@ -114,9 +129,10 @@ func (h *Handler) CreateZone(c *gin.Context) {
 }
 
 type UpdateZoneRequest struct {
-	Title          *string `json:"title"`
-	Description    *string `json:"description"`
-	MinCreditScore *int    `json:"min_credit_score"`
+	Title          *string             `json:"title"`
+	Description    *string             `json:"description"`
+	Category       *model.ZoneCategory `json:"category"`
+	MinCreditScore *int                `json:"min_credit_score"`
 }
 
 // PATCH /zones/:zoneId
@@ -142,6 +158,9 @@ func (h *Handler) UpdateZone(c *gin.Context) {
 	}
 	if req.Description != nil {
 		updates["description"] = *req.Description
+	}
+	if req.Category != nil {
+		updates["category"] = *req.Category
 	}
 	if req.MinCreditScore != nil {
 		updates["min_credit_score"] = *req.MinCreditScore
@@ -188,10 +207,21 @@ func (h *Handler) GetMyApplications(c *gin.Context) {
 	var apps []model.ZoneApplication
 	database.DB.Where("applicant_id = ?", userID).Order("applied_at DESC").Find(&apps)
 
-	for i := range apps {
-		var zone model.Zone
-		database.DB.First(&zone, "id = ?", apps[i].ZoneID)
-		apps[i].Zone = &zone
+	// 批次撈 Zone（避免 N+1）
+	zoneIDs := make([]string, len(apps))
+	for i, a := range apps {
+		zoneIDs[i] = a.ZoneID
+	}
+	if len(zoneIDs) > 0 {
+		var zones []model.Zone
+		database.DB.Where("id IN ?", zoneIDs).Find(&zones)
+		zoneMap := make(map[string]*model.Zone, len(zones))
+		for i := range zones {
+			zoneMap[zones[i].ID] = &zones[i]
+		}
+		for i := range apps {
+			apps[i].Zone = zoneMap[apps[i].ZoneID]
+		}
 	}
 	response.OK(c, apps)
 }
@@ -273,10 +303,17 @@ func (h *Handler) GetApplications(c *gin.Context) {
 
 	var apps []model.ZoneApplication
 	database.DB.Where("zone_id = ?", zoneID).Order("applied_at DESC").Find(&apps)
+
+	// 批次撈 applicant profile（避免 N+1）
+	applicantIDs := make([]string, len(apps))
+	for i, a := range apps {
+		applicantIDs[i] = a.ApplicantID
+	}
+	profileMap := batchLoadProfiles(applicantIDs)
 	for i := range apps {
-		var profile model.UserProfile
-		database.DB.Where("user_id = ?", apps[i].ApplicantID).First(&profile)
-		apps[i].Applicant = &profile
+		if p, ok := profileMap[apps[i].ApplicantID]; ok {
+			apps[i].Applicant = p
+		}
 	}
 	response.OK(c, apps)
 }
@@ -323,13 +360,16 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 			response.UnprocessableEntity(c, "ZONE_FULL", "Zone 名額已滿")
 			return
 		}
-		database.DB.Model(&app).Updates(map[string]interface{}{
-			"status": model.ApplicationApproved, "reviewed_at": now,
-		})
-		database.DB.Model(&zone).UpdateColumn("accepted_count", gorm.Expr("accepted_count + 1"))
-
-		// 建立 Chat + Transaction
+		// 原子操作：更新申請狀態 + 名額計數 + 建立 Chat + Transaction
 		if err := database.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&app).Updates(map[string]interface{}{
+				"status": model.ApplicationApproved, "reviewed_at": now,
+			}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&zone).UpdateColumn("accepted_count", gorm.Expr("accepted_count + 1")).Error; err != nil {
+				return err
+			}
 			chat := model.Chat{Type: model.ChatTypeZone, ZoneID: &zoneID, ApplicationID: &app.ID}
 			if err := tx.Create(&chat).Error; err != nil {
 				return err
@@ -356,4 +396,18 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 	}
 
 	response.NoContent(c)
+}
+
+// batchLoadProfiles 批次載入 UserProfile，回傳 userID → *UserProfile 的 map
+func batchLoadProfiles(userIDs []string) map[string]*model.UserProfile {
+	profileMap := make(map[string]*model.UserProfile)
+	if len(userIDs) == 0 {
+		return profileMap
+	}
+	var profiles []model.UserProfile
+	database.DB.Where("user_id IN ?", userIDs).Find(&profiles)
+	for i := range profiles {
+		profileMap[profiles[i].UserID] = &profiles[i]
+	}
+	return profileMap
 }

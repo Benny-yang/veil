@@ -46,6 +46,12 @@ type Config struct {
 
 	// 交易超時天數
 	TxTimeoutDays map[string]int
+
+	// 管理者
+	AdminUsername  string
+	AdminPassword  string
+	AdminJWTSecret string
+	AdminUIPath    string // 管理者前端的靜態檔案掛載路徑
 }
 
 // Load 讀取指定環境的 .env 檔案
@@ -93,10 +99,19 @@ func Load() (*Config, error) {
 		CreditScoreInit:      getEnvInt("CREDIT_SCORE_INIT", 60),
 		CreditScoreMax:       getEnvInt("CREDIT_SCORE_MAX", 100),
 		TxTimeoutDays:        txTimeoutDays,
+		AdminUsername:        getEnv("ADMIN_USERNAME", "admin"),
+		AdminPassword:        getEnv("ADMIN_PASSWORD", "admin1234"),
+		AdminJWTSecret:       getEnv("ADMIN_JWT_SECRET", ""),
+		AdminUIPath:          getEnv("ADMIN_UI_PATH", "/manage-panel"),
 	}
 
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET 未設定，請檢查 .env.%s", env)
+	}
+
+	// 若未設定 AdminJWTSecret，使用 JWTSecret + "-admin" 作為 fallback
+	if cfg.AdminJWTSecret == "" {
+		cfg.AdminJWTSecret = cfg.JWTSecret + "-admin"
 	}
 
 	return cfg, nil

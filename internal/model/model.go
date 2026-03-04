@@ -12,6 +12,22 @@ func newUUID() string {
 	return uuid.New().String()
 }
 
+// ─── admin_users（管理者帳號）────────────────────────────────────────────────
+
+type AdminUser struct {
+	ID           string    `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	Username     string    `gorm:"uniqueIndex;size:50;not null" json:"username"`
+	PasswordHash string    `gorm:"size:255;not null" json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (a *AdminUser) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == "" {
+		a.ID = newUUID()
+	}
+	return nil
+}
+
 // ─── users（認證帳號）─────────────────────────────────────────────────────────
 
 type User struct {
@@ -114,16 +130,17 @@ func (t *Tag) BeforeCreate(tx *gorm.DB) error {
 // ─── works（作品）───────────────────────────────────────────────────────────
 
 type Work struct {
-	ID           string      `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	UserID       string      `gorm:"type:varchar(36);not null;index" json:"user_id"`
-	Description  string      `gorm:"type:text" json:"description"`
-	CoverURL     *string     `gorm:"size:512" json:"cover_url"`
-	LikeCount    int         `gorm:"default:0" json:"like_count"`
-	CommentCount int         `gorm:"default:0" json:"comment_count"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
-	Photos       []WorkPhoto `gorm:"foreignKey:WorkID" json:"photos,omitempty"`
-	Tags         []Tag       `gorm:"many2many:work_tags;" json:"tags,omitempty"`
+	ID           string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	UserID       string       `gorm:"type:varchar(36);not null;index" json:"user_id"`
+	Description  string       `gorm:"type:text" json:"description"`
+	CoverURL     *string      `gorm:"size:512" json:"cover_url"`
+	LikeCount    int          `gorm:"default:0" json:"like_count"`
+	CommentCount int          `gorm:"default:0" json:"comment_count"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
+	Photos       []WorkPhoto  `gorm:"foreignKey:WorkID" json:"photos,omitempty"`
+	Tags         []Tag        `gorm:"many2many:work_tags;" json:"tags,omitempty"`
+	Author       *UserProfile `gorm:"-" json:"author,omitempty"`
 }
 
 func (w *Work) BeforeCreate(tx *gorm.DB) error {
@@ -148,60 +165,24 @@ func (w *WorkPhoto) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ─── posts（首頁貼文）────────────────────────────────────────────────────────
-
-type Post struct {
-	ID           string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	UserID       string       `gorm:"type:varchar(36);not null;index" json:"user_id"`
-	Description  string       `gorm:"type:text" json:"description"`
-	LikeCount    int          `gorm:"default:0" json:"like_count"`
-	CommentCount int          `gorm:"default:0" json:"comment_count"`
-	CreatedAt    time.Time    `json:"created_at"`
-	Images       []PostImage  `gorm:"foreignKey:PostID" json:"images,omitempty"`
-	Tags         []Tag        `gorm:"many2many:post_tags;" json:"tags,omitempty"`
-	Author       *UserProfile `gorm:"-" json:"author,omitempty"`
-	LikedByMe    bool         `gorm:"-" json:"liked_by_me"`
-}
-
-func (p *Post) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == "" {
-		p.ID = newUUID()
-	}
-	return nil
-}
-
-type PostImage struct {
-	ID        string `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	PostID    string `gorm:"type:varchar(36);not null;index" json:"post_id"`
-	URL       string `gorm:"size:512;not null" json:"url"`
-	SortOrder int    `gorm:"default:0" json:"sort_order"`
-}
-
-func (p *PostImage) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == "" {
-		p.ID = newUUID()
-	}
-	return nil
-}
-
-type PostLike struct {
+type WorkLike struct {
 	UserID    string    `gorm:"primaryKey;type:varchar(36)" json:"user_id"`
-	PostID    string    `gorm:"primaryKey;type:varchar(36)" json:"post_id"`
+	WorkID    string    `gorm:"primaryKey;type:varchar(36)" json:"work_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type PostComment struct {
+type WorkComment struct {
 	ID        string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
-	PostID    string       `gorm:"type:varchar(36);not null;index" json:"post_id"`
+	WorkID    string       `gorm:"type:varchar(36);not null;index" json:"work_id"`
 	UserID    string       `gorm:"type:varchar(36);not null;index" json:"user_id"`
 	Content   string       `gorm:"type:text;not null" json:"content"`
 	CreatedAt time.Time    `json:"created_at"`
 	Author    *UserProfile `gorm:"-" json:"author,omitempty"`
 }
 
-func (p *PostComment) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == "" {
-		p.ID = newUUID()
+func (w *WorkComment) BeforeCreate(tx *gorm.DB) error {
+	if w.ID == "" {
+		w.ID = newUUID()
 	}
 	return nil
 }
@@ -215,11 +196,25 @@ const (
 	ZoneStatusEnded  ZoneStatus = "ended"
 )
 
+// ─── zone_categories ─────────────────────────────────────────────────────────
+
+type ZoneCategory string
+
+const (
+	ZoneCategoryTop      ZoneCategory = "top"      // 上衣
+	ZoneCategoryBottom   ZoneCategory = "bottom"   // 下著
+	ZoneCategoryIntimate ZoneCategory = "intimate" // 內衣
+	ZoneCategorySock     ZoneCategory = "sock"     // 襪子
+	ZoneCategoryShoe     ZoneCategory = "shoe"     // 鞋子
+	ZoneCategoryOther    ZoneCategory = "other"    // 其他
+)
+
 type Zone struct {
 	ID             string       `gorm:"primaryKey;type:varchar(36)" json:"id"`
 	SellerID       string       `gorm:"type:varchar(36);not null;index" json:"seller_id"`
 	Title          string       `gorm:"size:100;not null" json:"title"`
 	Description    string       `gorm:"type:text" json:"description"`
+	Category       ZoneCategory `gorm:"type:varchar(20);default:'other'" json:"category"`
 	TotalSlots     int          `gorm:"not null" json:"total_slots"`
 	AcceptedCount  int          `gorm:"default:0" json:"accepted_count"`
 	MinCreditScore int          `gorm:"default:0" json:"min_credit_score"`
@@ -450,4 +445,38 @@ func (p *PasswordResetToken) BeforeCreate(tx *gorm.DB) error {
 
 func (p *PasswordResetToken) IsValid() bool {
 	return p.UsedAt == nil && time.Now().Before(p.ExpiresAt)
+}
+
+// ─── notifications（通知）────────────────────────────────────────────────────
+
+type NotificationType string
+
+const (
+	NotifLike        NotificationType = "like"
+	NotifComment     NotificationType = "comment"
+	NotifFollow      NotificationType = "follow"
+	NotifZoneApply   NotificationType = "zone_apply"
+	NotifZoneApprove NotificationType = "zone_approved"
+	NotifZoneReject  NotificationType = "zone_rejected"
+	NotifTxUpdate    NotificationType = "tx_update"
+)
+
+type Notification struct {
+	ID         string           `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	UserID     string           `gorm:"type:varchar(36);not null;index" json:"user_id"`
+	ActorID    *string          `gorm:"type:varchar(36)" json:"actor_id,omitempty"`
+	Type       NotificationType `gorm:"type:varchar(30);not null" json:"type"`
+	TargetID   *string          `gorm:"type:varchar(36)" json:"target_id,omitempty"`
+	TargetType *string          `gorm:"type:varchar(30)" json:"target_type,omitempty"`
+	Message    string           `gorm:"size:200;not null" json:"message"`
+	Read       bool             `gorm:"default:false" json:"read"`
+	CreatedAt  time.Time        `json:"created_at"`
+	Actor      *UserProfile     `gorm:"-" json:"actor,omitempty"`
+}
+
+func (n *Notification) BeforeCreate(tx *gorm.DB) error {
+	if n.ID == "" {
+		n.ID = newUUID()
+	}
+	return nil
 }
