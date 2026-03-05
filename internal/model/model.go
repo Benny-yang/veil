@@ -369,6 +369,12 @@ type Chat struct {
 
 	// 虛擬欄位：交易資訊（由 handler 填入，不存 DB）
 	Transaction *Transaction `gorm:"-" json:"transaction,omitempty"`
+
+	// 虛擬欄位：最新活動時間（由 handler 填入，不存 DB）
+	LastActivityAt *time.Time `gorm:"-" json:"last_activity_at,omitempty"`
+
+	// 虛擬欄位：未讀訊息數（由 handler 填入，不存 DB）
+	UnreadCount int `gorm:"-" json:"unread_count"`
 }
 
 func (c *Chat) BeforeCreate(tx *gorm.DB) error {

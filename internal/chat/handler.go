@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/benny-yang/veil-api/internal/middleware"
@@ -34,7 +35,7 @@ func (h *Handler) GetZoneChats(c *gin.Context) {
 
 	var chats []model.Chat
 	if len(chatIDs) > 0 {
-		database.DB.Preload("Participants").Where("id IN ? AND type = ?", chatIDs, model.ChatTypeZone).Find(&chats)
+		database.DB.Preload("Participants").Where("id IN ? AND type = ?", chatIDs, model.ChatTypeZone).Order("created_at DESC").Find(&chats)
 	}
 
 	// 補填每位參與者的 Profile
@@ -96,6 +97,9 @@ func (h *Handler) GetZoneChats(c *gin.Context) {
 		}
 	}
 
+	// 裝入最後互動時間、未讀數量，並依時間重新排序
+	enrichChats(chats, chatIDs, userID, participants)
+
 	response.OK(c, chats)
 }
 
@@ -115,7 +119,7 @@ func (h *Handler) GetDMChats(c *gin.Context) {
 	if len(chatIDs) > 0 {
 		database.DB.Preload("Participants").Where("id IN ? AND type = ?", chatIDs, model.ChatTypeDM).Find(&chats)
 
-		// 補填每位參與者的 Profile（gorm:"-" 需手動查詢）
+		// 補填每位參與者的 Profile
 		for i := range chats {
 			for j := range chats[i].Participants {
 				var profile model.UserProfile
@@ -124,8 +128,66 @@ func (h *Handler) GetDMChats(c *gin.Context) {
 				}
 			}
 		}
+
+		// 裝入最後互動時間、未讀數量，並依時間重新排序
+		enrichChats(chats, chatIDs, userID, participants)
 	}
 	response.OK(c, chats)
+}
+
+// enrichChats \u88dd\u5165\u8173\u5929\u5ba4\u7684 LastActivityAt\u3001UnreadCount\uff0c\u4e26\u4f9d\u6700\u5f8c\u4e92\u52d5\u6642\u9593\u6392\u5e8f\u3002
+// \u88ab GetZoneChats \u548c GetDMChats \u5171\u7528\u3002
+func enrichChats(chats []model.Chat, chatIDs []string, userID string, participants []model.ChatParticipant) {
+	if len(chatIDs) == 0 {
+		return
+	}
+
+	// \u8a08\u7b97\u5404\u8173\u5929\u5ba4\u7684\u6700\u5f8c\u8a0a\u606f\u6642\u9593
+	var activities []struct {
+		ChatID  string
+		MaxTime time.Time
+	}
+	database.DB.Table("chat_messages").
+		Select("chat_id, MAX(created_at) as max_time").
+		Where("chat_id IN ?", chatIDs).
+		Group("chat_id").
+		Scan(&activities)
+
+	actMap := make(map[string]time.Time, len(activities))
+	for _, a := range activities {
+		actMap[a.ChatID] = a.MaxTime
+	}
+	for i := range chats {
+		if t, ok := actMap[chats[i].ID]; ok {
+			chats[i].LastActivityAt = &t
+		} else {
+			chats[i].LastActivityAt = &chats[i].CreatedAt
+		}
+	}
+
+	// \u5efa\u7acb\u4f7f\u7528\u8005\u5404\u8173\u5929\u5ba4\u7684 last_read_at \u6620\u5c04\u8868
+	readAtMap := make(map[string]time.Time, len(participants))
+	for _, p := range participants {
+		if p.LastReadAt != nil {
+			readAtMap[p.ChatID] = *p.LastReadAt
+		}
+	}
+
+	// \u8a08\u7b97\u5404\u8173\u5929\u5ba4\u672a\u8b80\u6578\u91cf
+	for i := range chats {
+		cID := chats[i].ID
+		lastRead := readAtMap[cID]
+		var count int64
+		database.DB.Model(&model.ChatMessage{}).
+			Where("chat_id = ? AND sender_id != ? AND created_at > ?", cID, userID, lastRead).
+			Count(&count)
+		chats[i].UnreadCount = int(count)
+	}
+
+	// \u6309\u6700\u5f8c\u4e92\u52d5\u6642\u9593\u5012\u5e8f\u6392\u5e8f
+	sort.SliceStable(chats, func(i, j int) bool {
+		return chats[i].LastActivityAt.After(*chats[j].LastActivityAt)
+	})
 }
 
 type CreateDMRequest struct {
