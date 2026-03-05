@@ -97,7 +97,7 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
     }
 
     // ── 作者頭像 ─────────────────────────────────────────
-    const AuthorAvatar = ({ size = 36 }) => {
+    const renderAuthorAvatar = (size = 36) => {
         if (author?.avatar) {
             return (
                 <div style={{ width: size, height: size, borderRadius: '50%', overflow: 'hidden', flexShrink: 0 }}>
@@ -114,7 +114,7 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
     const authorName = author?.displayName || author?.name || ''
 
     // ── 留言列表 ─────────────────────────────────────────
-    const CommentList = () => (
+    const renderCommentList = () => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {commentsLoading ? (
                 <div style={{ fontSize: 12, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', textAlign: 'center', marginTop: 8 }}>載入中⋯</div>
@@ -143,7 +143,7 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
     )
 
     // ── 底部 actions bar ─────────────────────────────────
-    const ActionsBar = ({ borderStyle = '1px solid #F0EBE3' }) => (
+    const renderActionsBar = (borderStyle = '1px solid #F0EBE3') => (
         <div style={{ borderTop: borderStyle }}>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', padding: '10px 16px' }}>
                 <button onClick={handleLike} style={{
@@ -216,7 +216,7 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
                         onClick={() => { onClose(); navigate(`/profile/${authorKey}`) }}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #F0EBE3', backgroundColor: '#FFFFFF', cursor: 'pointer' }}
                     >
-                        <AuthorAvatar size={36} />
+                        {renderAuthorAvatar(36)}
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
                             <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>{authorName}</span>
                             {author?.rating && (
@@ -234,13 +234,13 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
 
                     {/* 留言列表（隨頁面滾動） */}
                     <div style={{ padding: '8px 16px 16px', backgroundColor: '#FFFFFF' }}>
-                        <CommentList />
+                        {renderCommentList()}
                     </div>
                 </div>
 
                 {/* 底部固定：actions + 輸入欄 */}
                 <div style={{ backgroundColor: '#FFFFFF', flexShrink: 0 }}>
-                    <ActionsBar />
+                    {renderActionsBar()}
                 </div>
             </div>
         )
@@ -295,7 +295,7 @@ export default function PostModal({ item, author, onClose, zIndex = 1000 }) {
                         onClick={() => { onClose(); navigate(`/profile/${authorKey}`) }}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, cursor: 'pointer' }}
                     >
-                        <AuthorAvatar size={36} />
+                        {renderAuthorAvatar(36)}
                         <div>
                             <div style={{ fontFamily: 'Noto Sans TC, sans-serif', fontSize: 14, fontWeight: 600, color: '#1C1A18' }}>{authorName}</div>
                             {author?.rating && (

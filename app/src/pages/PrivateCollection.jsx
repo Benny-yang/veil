@@ -460,9 +460,12 @@ function ZoneFormFields({ values, onChange, isEditing = false }) {
 
 // ── Edit Zone Modal ────────────────────────────────────────────────────────────
 function EditZoneModal({ zone, onClose, onUpdated }) {
+    const toLocalDate = (d) => d ? `${new Date(d).getFullYear()}-${String(new Date(d).getMonth() + 1).padStart(2, '0')}-${String(new Date(d).getDate()).padStart(2, '0')}` : '';
     const [values, setValues] = useState({
-        title: zone.title, desc: zone.raw?.description || '', startDate: zone.raw?.created_at ? new Date(zone.raw.created_at).toISOString().split('T')[0] : '', endDate: zone.raw?.ends_at ? new Date(zone.raw.ends_at).toISOString().split('T')[0] : '',
-        slots: String(zone.raw?.total_slots || 5), creditMin: String(zone.raw?.min_credit_score || 0), requireIntro: zone.raw?.require_intro || true,
+        title: zone.title, desc: zone.raw?.description || '',
+        startDate: toLocalDate(zone.raw?.starts_at || zone.raw?.created_at),
+        endDate: toLocalDate(zone.raw?.ends_at),
+        slots: String(zone.raw?.total_slots || 5), creditMin: String(zone.raw?.min_credit_score || 0), requireIntro: zone.raw?.require_intro ?? true,
         category: zone.raw?.category || 'other',
         photos: (zone.raw?.photos || []).map(p => ({ id: p.id, url: p.url })),
         coverId: (zone.raw?.photos || []).find(p => p.is_cover)?.id || (zone.raw?.photos?.[0]?.id || ''),
@@ -492,8 +495,8 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
                 title: values.title,
                 description: values.desc,
                 category: values.category || 'other',
-                starts_at: values.startDate ? new Date(values.startDate).toISOString() : null,
-                ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
+                starts_at: values.startDate ? new Date(`${values.startDate}T00:00:00`).toISOString() : null,
+                ends_at: values.endDate ? new Date(`${values.endDate}T23:59:59`).toISOString() : null,
                 total_slots: parseInt(values.slots || '1', 10),
                 min_credit_score: parseInt(values.creditMin || '0', 10),
                 require_intro: values.requireIntro,
@@ -670,7 +673,7 @@ function NewZoneModal({ onClose, onCreated }) {
                 title: values.title,
                 description: values.desc,
                 category: values.category || 'other',
-                ends_at: values.endDate ? new Date(values.endDate).toISOString() : null,
+                ends_at: values.endDate ? new Date(`${values.endDate}T23:59:59`).toISOString() : null,
                 total_slots: parseInt(values.slots || '1', 10),
                 min_credit_score: parseInt(values.creditMin || '0', 10),
                 photos: uploadedPhotos,

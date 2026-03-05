@@ -13,8 +13,11 @@ export function timeLeftText(endsAt) {
     if (!endsAt) return null
     const diff = new Date(endsAt) - new Date()
     if (diff <= 0) return '已截止'
+    if (diff < 86400000) {
+        const hours = Math.ceil(diff / 3600000)
+        return `剩餘 ${hours} 小時`
+    }
     const days = Math.ceil(diff / 86400000)
-    if (days <= 1) return '剩餘 1 天'
     return `剩餘 ${days} 天`
 }
 

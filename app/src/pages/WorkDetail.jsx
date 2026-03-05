@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Heart, MessageCircle, ChevronLeft, ChevronRight, ArrowLeft, User } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
@@ -6,6 +6,46 @@ import { workApi } from '../services/api'
 import { normalizeWork, normalizeComment } from '../utils/normalizers'
 
 const font = 'Noto Sans TC, sans-serif'
+
+// ── 獨立元件：留言輸入框 ──────────────────────────────────────────────────────
+// 將 newComment state 隔離在此元件內，避免每次打字觸發整個
+// WorkDetail 重新渲染（會導致手機版 input DOM 節點重建、失焦）
+function CommentInput({ workId, onSubmitted }) {
+    const [text, setText] = useState('')
+    const [submitting, setSubmitting] = useState(false)
+    const inputRef = useRef(null)
+
+    const handleSubmit = async () => {
+        if (!text.trim() || submitting) return
+        setSubmitting(true)
+        try {
+            await workApi.addComment(workId, text.trim())
+            setText('')
+            onSubmitted()
+        } catch { /* 保持 input 不清空 */ }
+        finally { setSubmitting(false) }
+    }
+
+    return (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+                ref={inputRef}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                placeholder="新增留言…"
+                style={{ flex: 1, border: 'none', borderBottom: '1px solid #E8DDD0', outline: 'none', padding: '6px 0', fontSize: 13, fontFamily: font, color: '#1C1A18', backgroundColor: 'transparent' }}
+            />
+            <button
+                onClick={handleSubmit}
+                disabled={!text.trim() || submitting}
+                style={{ fontSize: 12, color: text.trim() ? '#C4A882' : '#D4CCC4', fontFamily: font, fontWeight: 600, background: 'none', border: 'none', cursor: text.trim() ? 'pointer' : 'default', padding: 0 }}
+            >
+                {submitting ? '送出中' : '送出'}
+            </button>
+        </div>
+    )
+}
 
 export default function WorkDetail() {
     const { id } = useParams()
@@ -17,8 +57,7 @@ export default function WorkDetail() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [imgIdx, setImgIdx] = useState(0)
-    const [newComment, setNewComment] = useState('')
-    const [submitting, setSubmitting] = useState(false)
+    // newComment / submitting 已移至 CommentInput 元件內
     const [liked, setLiked] = useState(false)
     const [likeCount, setLikeCount] = useState(0)
 
@@ -59,16 +98,7 @@ export default function WorkDetail() {
         }
     }
 
-    const handleComment = async () => {
-        if (!newComment.trim() || submitting) return
-        setSubmitting(true)
-        try {
-            await workApi.addComment(id, newComment.trim())
-            setNewComment('')
-            load()
-        } catch { /* 保持 input 不清空 */ }
-        finally { setSubmitting(false) }
-    }
+    // handleComment 已移至 CommentInput 元件內
 
     if (loading) {
         return (
@@ -181,22 +211,7 @@ export default function WorkDetail() {
                     </div>
 
                     {/* 新增留言 */}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input
-                            value={newComment}
-                            onChange={e => setNewComment(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleComment()}
-                            placeholder="新增留言…"
-                            style={{ flex: 1, border: 'none', borderBottom: '1px solid #E8DDD0', outline: 'none', padding: '6px 0', fontSize: 13, fontFamily: font, color: '#1C1A18', backgroundColor: 'transparent' }}
-                        />
-                        <button
-                            onClick={handleComment}
-                            disabled={!newComment.trim() || submitting}
-                            style={{ fontSize: 12, color: newComment.trim() ? '#C4A882' : '#D4CCC4', fontFamily: font, fontWeight: 600, background: 'none', border: 'none', cursor: newComment.trim() ? 'pointer' : 'default', padding: 0 }}
-                        >
-                            {submitting ? '送出中' : '送出'}
-                        </button>
-                    </div>
+                    <CommentInput workId={id} onSubmitted={load} />
                 </div>
             </div>
         </div>

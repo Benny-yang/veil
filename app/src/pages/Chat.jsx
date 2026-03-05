@@ -16,21 +16,27 @@ const TX_STEPS = [
 ]
 const TX_STEP_INDEX = Object.fromEntries(TX_STEPS.map((s, i) => [s.key, i]))
 
-// 逾時天數設定
-const TIMEOUT_DAYS = { pending_payment: 3, paid: 7, shipped: 14 }
+// 逾時設定（開發環境 5 分鐘測試，正式環境依預設天數）
+const msPerDay = 86400000
+const DEV_TIMEOUT = 5 * 60 * 1000 // 5 分鐘
 
-
+const TIMEOUT_MS = {
+    pending: import.meta.env.DEV ? DEV_TIMEOUT : 3 * msPerDay,
+    shipping: import.meta.env.DEV ? DEV_TIMEOUT : 7 * msPerDay,
+    received: import.meta.env.DEV ? DEV_TIMEOUT : 14 * msPerDay,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 工具函式
 // ─────────────────────────────────────────────────────────────────────────────
 function daysSince(ts) {
-    return Math.floor((Date.now() - ts) / 86400000)
+    return Math.floor((Date.now() - ts) / msPerDay)
 }
+
 function isTimedOut(tx) {
-    if (!tx || tx.status === 'completed') return false
-    const limit = TIMEOUT_DAYS[tx.status]
-    return limit ? daysSince(tx.updatedAt) >= limit : false
+    if (!tx || tx.status === 'completed' || tx.status === 'cancelled') return false
+    const limitParams = TIMEOUT_MS[tx.status]
+    return limitParams ? (Date.now() - tx.updatedAt) >= limitParams : false
 }
 function nowTime() {
     return new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
@@ -125,7 +131,7 @@ function ConfirmDialog({ icon, title, desc, confirmLabel, confirmColor = '#1C1A1
 // ─────────────────────────────────────────────────────────────────────────────
 // ReviewModal（評價彈窗）
 // ─────────────────────────────────────────────────────────────────────────────
-function ReviewModal({ peerName, onSubmit, onSkip }) {
+function ReviewModal({ peerName, maxScore = 5, onSubmit, onSkip }) {
     const [score, setScore] = useState(0)
     const [hovered, setHovered] = useState(0)
     const [comment, setComment] = useState('')
@@ -149,21 +155,33 @@ function ReviewModal({ peerName, onSubmit, onSkip }) {
 
                 {/* 星評 */}
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    {[1, 2, 3, 4, 5].map(n => (
-                        <button key={n}
-                            onClick={() => setScore(n)}
-                            onMouseEnter={() => setHovered(n)}
-                            onMouseLeave={() => setHovered(0)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-                        >
-                            <Star
-                                size={28} strokeWidth={1.5}
-                                fill={(hovered || score) >= n ? '#C4A882' : 'none'}
-                                color={(hovered || score) >= n ? '#C4A882' : '#D4CCC4'}
-                            />
-                        </button>
-                    ))}
+                    {[1, 2, 3, 4, 5].map(n => {
+                        const disabled = n > maxScore
+                        return (
+                            <button key={n}
+                                onClick={() => !disabled && setScore(n)}
+                                onMouseEnter={() => !disabled && setHovered(n)}
+                                onMouseLeave={() => !disabled && setHovered(0)}
+                                style={{
+                                    background: 'none', border: 'none',
+                                    cursor: disabled ? 'not-allowed' : 'pointer',
+                                    padding: 4, opacity: disabled ? 0.3 : 1
+                                }}
+                            >
+                                <Star
+                                    size={28} strokeWidth={1.5}
+                                    fill={(hovered || score) >= n ? '#C4A882' : 'none'}
+                                    color={(hovered || score) >= n && !disabled ? '#C4A882' : '#D4CCC4'}
+                                />
+                            </button>
+                        )
+                    })}
                 </div>
+                {maxScore < 5 && (
+                    <div style={{ textAlign: 'center', fontSize: 12, color: '#C0392B', marginTop: -10 }}>
+                        因交易逾時，最高僅能給予 {maxScore} 星評價
+                    </div>
+                )}
                 {score > 0 && (
                     <div style={{
                         textAlign: 'center', fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif',
@@ -274,27 +292,49 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
     const timedOut = isTimedOut(tx)
     const days = timedOut && tx ? daysSince(tx.updatedAt) : 0
     const isCompleted = tx.status === 'completed'
+    const isCancelled = tx.status === 'cancelled'
 
-    // 決定當前操作按鈕
-    const getAction = () => {
+    // 回傳操作按鈕陣列（支援同時顯示多個按鈕）
+    const getActions = () => {
         if (isCompleted) {
-            if (viewerRole === 'seller' && !tx.sellerReviewed)
-                return { label: '★ 評價對方', type: 'review', color: '#C4A882' }
-            if (viewerRole === 'buyer' && !tx.buyerReviewed)
-                return { label: '★ 評價對方', type: 'review', color: '#C4A882' }
-            return { label: '交易已完成', type: null, color: '#D4CCC4' }
+            const canReview = (viewerRole === 'seller' && !tx.sellerReviewed) || (viewerRole === 'buyer' && !tx.buyerReviewed)
+            return canReview
+                ? [{ label: '★ 評價對方', type: 'review', color: '#C4A882' }]
+                : [{ label: '交易已完成', type: null, color: '#D4CCC4' }]
         }
+        if (isCancelled) {
+            const canReview = (viewerRole === 'seller' && !tx.sellerReviewed) || (viewerRole === 'buyer' && !tx.buyerReviewed)
+            return canReview
+                ? [{ label: '★ 評價對方', type: 'review', color: '#C0392B' }]
+                : [{ label: '交易已取消', type: null, color: '#D4CCC4' }]
+        }
+
+        // 逾時狀態：依照各方顯示對應按鈕
+        if (timedOut) {
+            const reviewBtn = { label: '★ 評價對方', type: 'force_review', color: '#C0392B' }
+            const cancelBtn = { label: '取消交易', type: 'cancel', color: '#8C8479', outline: true }
+            const noReceiveBtn = { label: '未收到貨品', type: 'cancel', color: '#C0392B' }
+
+            if (tx.status === 'pending' && viewerRole === 'seller')
+                return [cancelBtn, reviewBtn]
+            if (tx.status === 'shipping' && viewerRole === 'buyer')
+                return [cancelBtn, reviewBtn]
+            if (tx.status === 'received' && viewerRole === 'buyer')
+                return [noReceiveBtn, reviewBtn]
+        }
+
+        // 正常流程按鈕
         if (tx.status === 'pending' && viewerRole === 'buyer')
-            return { label: '我已付款', type: 'pending→shipping', color: '#1C1A18' }
+            return [{ label: '我已付款', type: 'pending→shipping', color: '#1C1A18' }]
         if (tx.status === 'shipping' && viewerRole === 'seller')
-            return { label: '確認寄出', type: 'shipping→received', color: '#1C1A18' }
+            return [{ label: '確認寄出', type: 'shipping→received', color: '#1C1A18' }]
         if (tx.status === 'received' && viewerRole === 'buyer')
-            return { label: '確認收貨', type: 'received→completed', color: '#2D7A4A' }
-        // 另一方視角：等待中
-        return null
+            return [{ label: '確認收貨', type: 'received→completed', color: '#2D7A4A' }]
+
+        return []
     }
 
-    const action = getAction()
+    const actions = getActions()
 
     return (
         <div style={{
@@ -306,60 +346,50 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
                 <StepProgress txStatus={tx.status} />
             </div>
 
-            {/* 逾時警告 */}
-            {timedOut && !isCompleted && (
+            {/* 逾時 / 取消 警告橫幅 */}
+            {(timedOut || isCancelled) && !isCompleted && (
                 <div style={{
                     margin: '0 24px 10px',
-                    backgroundColor: '#FFF8EE', borderRadius: 8,
-                    padding: '8px 12px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    backgroundColor: isCancelled ? '#FDF6F6' : '#FFF8EE', borderRadius: 8,
+                    padding: '8px 14px',
+                    display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <AlertTriangle size={13} color="#C4A882" strokeWidth={2} />
-                        <span style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                            已超過 {days} 天未更新，你現在可以直接提交評價
-                        </span>
-                    </div>
-                    <button onClick={() => onAction('force_review')} style={{
-                        padding: '5px 12px', borderRadius: 6, border: '1px solid #E8DDD0',
-                        backgroundColor: '#FFFFFF', fontSize: 11,
-                        fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
-                        whiteSpace: 'nowrap', flexShrink: 0,
-                    }}>留下評價</button>
+                    <AlertTriangle size={13} color={isCancelled ? '#C0392B' : '#C4A882'} strokeWidth={2} />
+                    <span style={{ fontSize: 11, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                        {isCancelled
+                            ? '交易已取消，你仍可留下評價'
+                            : days > 0
+                                ? `已超過 ${days} 天未更新`
+                                : '已超過規定時間未更新'}
+                    </span>
                 </div>
             )}
 
             {/* 操作按鈕區 */}
-            {action && (
-                <div style={{ padding: '0 24px 14px', display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                        onClick={() => action.type && onAction(action.type)}
-                        style={{
-                            padding: '9px 20px', borderRadius: 8, border: 'none',
-                            backgroundColor: action.color, color: '#FFFFFF',
-                            fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
-                            cursor: action.type ? 'pointer' : 'not-allowed',
-                            transition: 'opacity 0.15s',
-                            opacity: action.type ? 1 : 0.7,
-                        }}
-                        onMouseEnter={e => { if (action.type) e.currentTarget.style.opacity = '0.85' }}
-                        onMouseLeave={e => { if (action.type) e.currentTarget.style.opacity = '1' }}
-                    >
-                        {action.label}
-                    </button>
+            {actions.length > 0 && (
+                <div style={{ padding: '0 24px 14px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    {actions.map((act, i) => (
+                        <button key={i}
+                            onClick={() => act.type && onAction(act.type)}
+                            style={{
+                                padding: '9px 20px', borderRadius: 8,
+                                border: act.outline ? '1px solid #D4CCC4' : 'none',
+                                backgroundColor: act.outline ? '#FFFFFF' : act.color,
+                                color: act.outline ? '#8C8479' : '#FFFFFF',
+                                fontSize: 12, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
+                                cursor: act.type ? 'pointer' : 'not-allowed',
+                                transition: 'opacity 0.15s',
+                                opacity: act.type ? 1 : 0.7,
+                            }}
+                            onMouseEnter={e => { if (act.type) e.currentTarget.style.opacity = '0.85' }}
+                            onMouseLeave={e => { if (act.type) e.currentTarget.style.opacity = '1' }}
+                        >
+                            {act.label}
+                        </button>
+                    ))}
                 </div>
             )}
 
-            {/* 等待對方 */}
-            {!action && !isCompleted && (
-                <div style={{
-                    padding: '0 24px 14px', display: 'flex', justifyContent: 'flex-end',
-                }}>
-                    <span style={{ fontSize: 12, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif' }}>
-                        等待 {peerName} 操作…
-                    </span>
-                </div>
-            )}
         </div>
     )
 }
@@ -438,17 +468,28 @@ function Bubble({ msg, peerColor, peerAvatarUrl }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SidebarTab
 // ─────────────────────────────────────────────────────────────────────────────
-function SidebarTab({ label, active, onClick }) {
+function SidebarTab({ label, active, unread, onClick }) {
     return (
         <button onClick={onClick} style={{
-            flex: 1, padding: '9px 0', fontSize: 12,
+            flex: 1, padding: '9px 0', fontSize: 13,
             fontFamily: 'Noto Sans TC, sans-serif', fontWeight: active ? 600 : 400,
             color: active ? '#1C1A18' : '#8C8479',
             background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: active ? '2px solid #1C1A18' : '2px solid transparent',
             transition: 'all 0.15s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         }}>
             {label}
+            {unread > 0 && (
+                <span style={{
+                    minWidth: 16, height: 16, borderRadius: 8,
+                    backgroundColor: '#E07A5F', color: '#FFFFFF',
+                    fontSize: 9, fontWeight: 700, lineHeight: '16px',
+                    textAlign: 'center', padding: '0 4px',
+                }}>
+                    {unread > 99 ? '99+' : unread}
+                </span>
+            )}
         </button>
     )
 }
@@ -530,7 +571,7 @@ function ChatItem({ avatarLetter, avatarColor, avatarUrl, title, subtitle, badge
 // ─────────────────────────────────────────────────────────────────────────────
 // ZoneGroupHeader（展開/縮合）
 // ─────────────────────────────────────────────────────────────────────────────
-function ZoneGroupHeader({ zone, isExpanded, onToggle }) {
+function ZoneGroupHeader({ zone, isExpanded, unread, onToggle }) {
     const isFull = zone.collectorCount >= zone.totalSlots
     return (
         <button onClick={onToggle} style={{
@@ -543,11 +584,23 @@ function ZoneGroupHeader({ zone, isExpanded, onToggle }) {
             onMouseLeave={e => e.currentTarget.style.backgroundColor = '#F8F4EE'}
         >
             <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                    fontSize: 11, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600, color: '#8C8479',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                    {zone.zoneTitle}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{
+                        fontSize: 11, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600, color: '#8C8479',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                        {zone.zoneTitle}
+                    </div>
+                    {unread > 0 && (
+                        <span style={{
+                            minWidth: 14, height: 14, borderRadius: 7,
+                            backgroundColor: '#E07A5F', color: '#FFFFFF',
+                            fontSize: 8, fontWeight: 700, lineHeight: '14px',
+                            textAlign: 'center', padding: '0 4px',
+                        }}>
+                            {unread > 99 ? '99+' : unread}
+                        </span>
+                    )}
                 </div>
                 <div style={{
                     fontSize: 10, marginTop: 2, fontFamily: 'Noto Sans TC, sans-serif',
@@ -612,6 +665,7 @@ function normalizeZoneChats(chats, myUserID) {
                 collectorCount: chat.zone_collector_count ?? 0,
                 sellerId: chat.zone_seller_id || '',
                 chats: [],
+                latestAt: 0,
             }
         }
 
@@ -624,6 +678,11 @@ function normalizeZoneChats(chats, myUserID) {
             buyerReviewed: rawTx.buyer_reviewed ?? false,
             sellerReviewed: rawTx.seller_reviewed ?? false,
         } : null
+
+        const chatActivityTime = chat.last_activity_at ? new Date(chat.last_activity_at).getTime() : (chat.created_at ? new Date(chat.created_at).getTime() : 0)
+        if (chatActivityTime > zoneMap[zoneId].latestAt) {
+            zoneMap[zoneId].latestAt = chatActivityTime
+        }
 
         zoneMap[zoneId].chats.push({
             id: chat.id,
@@ -639,7 +698,8 @@ function normalizeZoneChats(chats, myUserID) {
             unread: chat.unread_count ?? 0,
         })
     }
-    return Object.values(zoneMap)
+    // 依最新對話時間降冪排序，最新的在上方
+    return Object.values(zoneMap).sort((a, b) => b.latestAt - a.latestAt)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -691,38 +751,51 @@ export default function Chat() {
     const isUserNearBottom = useRef(true)
 
     // ── 載入 Zone / DM 列表 ───────────────────────────────────────────────────
+    const hasUrlTarget = !!targetChatId || !!targetZoneChat
     const loadList = useCallback(async () => {
         setLoadingList(true)
         try {
+            const [zoneRes, dmRes] = await Promise.all([
+                chatApi.getZoneChats(),
+                chatApi.getDmChats()
+            ])
+
+            // 正規化 Zone Chats
+            const rawZone = zoneRes.data.data || []
+            const normalizedZone = normalizeZoneChats(rawZone, myUserID)
+            setZoneChats(normalizedZone)
+            setExpandedZones(new Set())  // 預設群組收合
+
+            // 正規化 DM Chats
+            const rawDm = dmRes.data.data || []
+            const normalizedDm = rawDm.map(c => normalizeDMChat(c, myUserID))
+            setDmChats(normalizedDm)
+
+            // 自動點擊邏輯
             if (sidebarTab === 'zone') {
-                const res = await chatApi.getZoneChats()
-                const raw = res.data.data || []
-                const normalized = normalizeZoneChats(raw, myUserID)
-                setZoneChats(normalized)
-                setExpandedZones(new Set(normalized.map(z => z.zoneId)))
-                if (!selectedId && normalized.length > 0 && normalized[0].chats.length > 0) {
-                    setSelectedId(normalized[0].chats[0].id)
+                if (!selectedId && normalizedZone.length > 0 && normalizedZone[0].chats.length > 0) {
+                    if (!isMobile || hasUrlTarget) {
+                        setSelectedId(normalizedZone[0].chats[0].id)
+                    }
                 }
             } else {
-                const res = await chatApi.getDmChats()
-                const raw = res.data.data || []
-                const normalized = raw.map(c => normalizeDMChat(c, myUserID))
-                setDmChats(normalized)
-                // ?id= 優先，否則選第一筆
-                const autoId = targetChatId || (!selectedId && normalized.length > 0 ? normalized[0].id : null)
-                if (autoId) setSelectedId(autoId)
-                if (isMobile && autoId) setMobileView('chat')
+                if (targetChatId) {
+                    setSelectedId(targetChatId)
+                    if (isMobile) setMobileView('chat')
+                } else if (!selectedId && normalizedDm.length > 0 && !isMobile) {
+                    setSelectedId(normalizedDm[0].id)
+                }
             }
         } catch (e) {
             console.error('載入聊天列表失敗', e)
         } finally {
             setLoadingList(false)
         }
-    }, [sidebarTab, myUserID, selectedId])
+    }, [sidebarTab, myUserID, selectedId, isMobile, hasUrlTarget, targetChatId])
 
     useEffect(() => {
         if (myUserID) loadList()
-    }, [sidebarTab, myUserID]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [myUserID]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 切換聊天室：載入訊息 + 標記已讀 ─────────────────────────────────────
     const loadMessages = useCallback(async (chatId) => {
@@ -732,7 +805,14 @@ export default function Chat() {
             const res = await chatApi.getMessages(chatId)
             const raw = res.data.data || []
             setMessages(prev => ({ ...prev, [chatId]: raw.map(m => normalizeMsg(m, myUserID)) }))
-            chatApi.markRead(chatId).catch(() => { })
+            chatApi.markRead(chatId).then(() => {
+                // 清除本地未讀狀態
+                setZoneChats(prev => prev.map(z => ({
+                    ...z,
+                    chats: z.chats.map(c => c.id === chatId ? { ...c, unread: 0 } : c)
+                })))
+                setDmChats(prev => prev.map(c => c.id === chatId ? { ...c, unread: 0 } : c))
+            }).catch(() => { })
         } catch (e) {
             console.error('載入訊息失敗', e)
         } finally {
@@ -752,6 +832,10 @@ export default function Chat() {
         }, 5000)
         return () => clearInterval(intervalId)
     }, [selectedId, myUserID, loadMessages])
+
+    // 計算總未讀數
+    const zoneUnreadTotal = zoneChats.reduce((acc, z) => acc + z.chats.reduce((cAcc, c) => cAcc + c.unread, 0), 0)
+    const dmUnreadTotal = dmChats.reduce((acc, c) => acc + c.unread, 0)
 
     // ── Derived ──────────────────────────────────────────────────────────────
     function findZoneChat(id) {
@@ -871,7 +955,12 @@ export default function Chat() {
         const zoneId = zoneChatMeta.zone.zoneId
 
         if (action === 'review' || action === 'force_review') {
-            setReviewTarget({ chatId, peerName: zoneChatMeta.chat.peer })
+            const timedOut = isTimedOut(zoneChatMeta.chat.tx)
+            setReviewTarget({
+                chatId,
+                peerName: zoneChatMeta.chat.peer,
+                maxScore: timedOut ? 3 : 5
+            })
             return
         }
 
@@ -891,6 +980,12 @@ export default function Chat() {
                 desc: '確認商品已收到且無問題。確認後將觸發評價流程。',
                 color: '#2D7A4A',
             },
+            'cancel': {
+                label: '取消交易',
+                desc: '確認取消此筆交易？取消後仍可留下評價，最高 3 顆星。',
+                color: '#C0392B',
+                nextStatus: 'cancelled',
+            },
         }
         const cfg = TX_CONFIRM[action]
         if (cfg) setConfirmTx({ chatId, zoneId, action, ...cfg })
@@ -898,14 +993,15 @@ export default function Chat() {
 
     const executeTxAction = async () => {
         if (!confirmTx) return
-        const { chatId, action } = confirmTx
+        const { chatId, action, nextStatus: configNextStatus } = confirmTx
         setConfirmTx(null)
 
-        const nextStatus = action.split('→')[1]
+        const nextStatus = configNextStatus || action.split('→')[1]
         const sysTexts = {
             shipping: '💳 買家已確認付款，請準備寄出商品',
             received: '📦 賣家已寄出商品，請注意查收',
             completed: '🎉 交易完成！感謝你的參與',
+            cancelled: '❌ 交易已取消',
         }
 
         try {
@@ -919,9 +1015,14 @@ export default function Chat() {
                 ),
             })))
             addSysMsg(chatId, sysTexts[nextStatus])
-            if (nextStatus === 'completed') {
+            if (nextStatus === 'completed' || nextStatus === 'cancelled') {
                 setTimeout(() => {
-                    setReviewTarget({ chatId, peerName: findZoneChat(chatId)?.chat.peer || '' })
+                    const tx = findZoneChat(chatId)?.chat.tx
+                    setReviewTarget({
+                        chatId,
+                        peerName: findZoneChat(chatId)?.chat.peer || '',
+                        maxScore: isTimedOut(tx) ? 3 : 5
+                    })
                 }, 600)
             }
         } catch (e) {
@@ -989,8 +1090,8 @@ export default function Chat() {
                         對話
                     </h2>
                     <div style={{ display: 'flex' }}>
-                        <SidebarTab label="私藏對話" active={sidebarTab === 'zone'} onClick={() => selectTab('zone')} />
-                        <SidebarTab label="私訊" active={sidebarTab === 'dm'} onClick={() => selectTab('dm')} />
+                        <SidebarTab label="私藏對話" active={sidebarTab === 'zone'} unread={zoneUnreadTotal} onClick={() => selectTab('zone')} />
+                        <SidebarTab label="私訊" active={sidebarTab === 'dm'} unread={dmUnreadTotal} onClick={() => selectTab('dm')} />
                     </div>
                 </div>
 
@@ -1000,6 +1101,7 @@ export default function Chat() {
                             <ZoneGroupHeader
                                 zone={zone}
                                 isExpanded={expandedZones.has(zone.zoneId)}
+                                unread={zone.chats.reduce((acc, c) => acc + c.unread, 0)}
                                 onToggle={() => toggleZone(zone.zoneId)}
                             />
                             {expandedZones.has(zone.zoneId) && zone.chats.map(c => (
@@ -1248,9 +1350,10 @@ export default function Chat() {
             )}
 
             {/* 評價 Modal */}
-            {reviewTarget && (
+            {!!reviewTarget && (
                 <ReviewModal
                     peerName={reviewTarget.peerName}
+                    maxScore={reviewTarget.maxScore || 5}
                     onSubmit={submitReview}
                     onSkip={() => setReviewTarget(null)}
                 />
