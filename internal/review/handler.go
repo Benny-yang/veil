@@ -223,19 +223,24 @@ func suspendBuyer(buyerID string, transactionID string) {
 	now := time.Now()
 	suspendUntil := now.AddDate(0, 0, suspensionDays)
 
-	database.DB.Model(&model.User{}).Where("id = ?", buyerID).Updates(map[string]interface{}{
+	if err := database.DB.Model(&model.User{}).Where("id = ?", buyerID).Updates(map[string]interface{}{
 		"suspended_until": suspendUntil,
 		"suspend_reason":  suspensionReason,
-	})
+	}).Error; err != nil {
+		log.Printf("[停權] 更新買家停權狀態失敗 (userID=%s): %v", buyerID, err)
+		return
+	}
 
-	database.DB.Create(&model.SuspensionLog{
+	if err := database.DB.Create(&model.SuspensionLog{
 		UserID:         buyerID,
 		Reason:         suspensionReason,
 		Days:           suspensionDays,
 		SuspendedAt:    now,
 		SuspendedUntil: suspendUntil,
 		TransactionID:  &transactionID,
-	})
+	}).Error; err != nil {
+		log.Printf("[停權] 建立買家停權紀錄失敗 (userID=%s): %v", buyerID, err)
+	}
 }
 
 // suspendSeller 停權賣家（設定停權 + 3 天申訴期）
@@ -252,12 +257,15 @@ func suspendSeller(sellerID string, transactionID string, cancelReason string) {
 	// 暫時停到很遠的未來，由申訴流程決定是否解除
 	permanentDate := time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
 
-	database.DB.Model(&model.User{}).Where("id = ?", sellerID).Updates(map[string]interface{}{
+	if err := database.DB.Model(&model.User{}).Where("id = ?", sellerID).Updates(map[string]interface{}{
 		"suspended_until": permanentDate,
 		"suspend_reason":  suspensionReason,
-	})
+	}).Error; err != nil {
+		log.Printf("[停權] 更新賣家停權狀態失敗 (userID=%s): %v", sellerID, err)
+		return
+	}
 
-	database.DB.Create(&model.SuspensionLog{
+	if err := database.DB.Create(&model.SuspensionLog{
 		UserID:         sellerID,
 		Reason:         suspensionReason,
 		Days:           -1, // -1 代表需要申訴，非固定天數
@@ -265,15 +273,20 @@ func suspendSeller(sellerID string, transactionID string, cancelReason string) {
 		SuspendedUntil: permanentDate,
 		TransactionID:  &transactionID,
 		AppealDeadline: &appealDeadline,
-	})
+	}).Error; err != nil {
+		log.Printf("[停權] 建立賣家停權紀錄失敗 (userID=%s): %v", sellerID, err)
+	}
 }
 
 // hasSuspensionLog 檢查是否已為某個交易存在相同原因的停權紀錄
 func hasSuspensionLog(userID string, txID string, reason string) bool {
 	var count int64
-	database.DB.Model(&model.SuspensionLog{}).
+	if err := database.DB.Model(&model.SuspensionLog{}).
 		Where("user_id = ? AND transaction_id = ? AND reason = ?", userID, txID, reason).
-		Count(&count)
+		Count(&count).Error; err != nil {
+		log.Printf("[停權] 查詢停權紀錄失敗 (userID=%s, txID=%s): %v", userID, txID, err)
+		return false
+	}
 	return count > 0
 }
 

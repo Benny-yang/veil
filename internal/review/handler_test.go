@@ -201,6 +201,9 @@ func TestCreateReview_ShippingTimeout_NoSuspension(t *testing.T) {
 	// 驗證買家沒有被停權（非 pending 超時）
 	var buyer model.User
 	database.DB.First(&buyer, "id = ?", buyerID)
+	if buyer.SuspendedUntil != nil {
+		t.Error("shipping 超時不應觸發買家停權")
+	}
 }
 
 func TestCreateReview_BuyerNotReceived_SellerSuspended(t *testing.T) {
