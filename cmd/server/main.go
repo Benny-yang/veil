@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/benny-yang/veil-api/internal/admin"
+	"github.com/benny-yang/veil-api/internal/appeal"
 	"github.com/benny-yang/veil-api/internal/auth"
 	chathandler "github.com/benny-yang/veil-api/internal/chat"
 	"github.com/benny-yang/veil-api/internal/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/benny-yang/veil-api/internal/model"
 	"github.com/benny-yang/veil-api/internal/notification"
 	"github.com/benny-yang/veil-api/internal/review"
+	"github.com/benny-yang/veil-api/internal/scheduler"
 	userhandler "github.com/benny-yang/veil-api/internal/user"
 	"github.com/benny-yang/veil-api/internal/work"
 	"github.com/benny-yang/veil-api/internal/zone"
@@ -57,9 +59,11 @@ func main() {
 		&model.ChatParticipant{},
 		&model.ChatMessage{},
 		&model.CreditScoreLog{},
+		&model.SuspensionLog{},
 		&model.SystemConfig{},
 		&model.PasswordResetToken{},
 		&model.Notification{},
+		&model.Appeal{},
 	); err != nil {
 		log.Fatalf("AutoMigrate 失敗: %v", err)
 	}
@@ -105,6 +109,7 @@ func main() {
 	creditH := credit.NewHandler()
 	adminH := admin.NewHandler(cfg.AdminJWTSecret)
 	notifH := notification.NewHandler()
+	appealH := appeal.NewHandler()
 
 	authMW := middleware.Auth(cfg.JWTSecret)
 	adminMW := admin.Auth(cfg.AdminJWTSecret)
@@ -149,10 +154,19 @@ func main() {
 		api.GET("/works/:workId/comments", workH.GetWorkComments)
 
 		// ── 需要登入 ────────────────────────────────────────────────────────
-		auth := api.Group("/", authMW)
+		// GetMe 排除停權檢查（前端需要讀取停權資訊）
+		api.GET("/users/me", authMW, userH.GetMe)
+
+		// 申訴 API（停權中也需要使用，故排除停權檢查）
+		api.POST("/appeals", authMW, appealH.CreateAppeal)
+		api.GET("/appeals/me", authMW, appealH.GetMyAppeal)
+
+		// Media Upload（排除停權檢查，申訴需要上傳圖片）
+		api.POST("/media/upload", authMW, mediaH.Upload)
+
+		auth := api.Group("/", authMW, middleware.CheckSuspension())
 		{
-			// 自己的資料
-			auth.GET("/users/me", userH.GetMe)
+			// 自己的資料（GetMe 已在上方獨立註冊）
 			auth.PATCH("/users/me", userH.UpdateMe)
 			auth.PUT("/users/me/avatar", userH.UpdateAvatar)
 			auth.PATCH("/users/me/password", userH.ChangePassword)
@@ -207,8 +221,7 @@ func main() {
 			// Reviews
 			auth.POST("/transactions/:txId/review", reviewH.CreateReview)
 
-			// Media
-			auth.POST("/media/upload", mediaH.Upload)
+			// Media（已移至停權檢查之外）
 		}
 	}
 
@@ -223,6 +236,10 @@ func main() {
 			adminProtected.GET("/zones/:zoneId/applications", adminH.GetZoneApplications)
 			adminProtected.GET("/verifications", adminH.ListVerifications)
 			adminProtected.PATCH("/verifications/:id", adminH.ReviewVerification)
+
+			// Appeals
+			adminProtected.GET("/appeals", appealH.ListAppeals)
+			adminProtected.PATCH("/appeals/:id", appealH.ReviewAppeal)
 		}
 	}
 
@@ -243,6 +260,9 @@ func main() {
 	// 靜態檔案服務（上傳的圖片）
 	r.StaticFS("/uploads", http.Dir(uploadDir))
 
+	// 啟動背景排程（自動完成逾時交易、提醒通知）
+	scheduler.Start()
+
 	addr := ":" + cfg.AppPort
 	log.Printf("🚀 Veil API [%s] 啟動於 %s", cfg.AppEnv, addr)
 	if err := r.Run(addr); err != nil {
@@ -254,8 +274,8 @@ func initSystemConfigs(cfg *config.Config) {
 	defaultConfigs := []model.SystemConfig{
 		{
 			Key:         "tx_timeout_days",
-			Value:       `{"pending":5,"shipping":5,"received":5}`,
-			Description: "各交易狀態的超時分鐘數（測試模式 = 5 分鐘，正式環境請改為天數）",
+			Value:       `{"pending":1,"shipping":1,"received":1}`,
+			Description: "各交易狀態的超時分鐘數（測試模式 = 1 分鐘，正式環境請改為天數）",
 		},
 		{
 			Key:         "credit_score_init",

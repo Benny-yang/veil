@@ -369,7 +369,10 @@ func (h *Handler) GetTransaction(c *gin.Context) {
 }
 
 type UpdateTransactionRequest struct {
-	Status string `json:"status" binding:"required,oneof=shipping received completed cancelled"`
+	Status         string `json:"status" binding:"required,oneof=shipping received completed cancelled"`
+	ShippingMethod string `json:"shipping_method"`
+	TrackingNumber string `json:"tracking_number"`
+	CancelReason   string `json:"cancel_reason"`
 }
 
 // PATCH /chats/:chatId/transaction
@@ -408,10 +411,24 @@ func (h *Handler) UpdateTransaction(c *gin.Context) {
 		return
 	}
 
-	database.DB.Model(&tx).Updates(map[string]interface{}{
+	updates := map[string]interface{}{
 		"status":            newStatus,
 		"status_updated_at": gorm.Expr("NOW()"),
-	})
+	}
+	// 賣家確認寄出時，儲存物流方式和追蹤單號
+	if newStatus == model.TxReceived && isSeller {
+		if req.ShippingMethod != "" {
+			updates["shipping_method"] = req.ShippingMethod
+		}
+		if req.TrackingNumber != "" {
+			updates["tracking_number"] = req.TrackingNumber
+		}
+	}
+	// 取消交易時儲存取消原因
+	if newStatus == model.TxCancelled && req.CancelReason != "" {
+		updates["cancel_reason"] = req.CancelReason
+	}
+	database.DB.Model(&tx).Updates(updates)
 	response.NoContent(c)
 }
 

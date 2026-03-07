@@ -38,6 +38,8 @@ type User struct {
 	EmailVerified        bool         `gorm:"default:false" json:"email_verified"`
 	EmailVerifyToken     *string      `gorm:"size:64;index" json:"-"`
 	EmailVerifyExpiresAt *time.Time   `json:"-"`
+	SuspendedUntil       *time.Time   `json:"suspended_until,omitempty"`
+	SuspendReason        string       `gorm:"size:200" json:"suspend_reason,omitempty"`
 	CreatedAt            time.Time    `json:"created_at"`
 	UpdatedAt            time.Time    `json:"updated_at"`
 	Profile              *UserProfile `gorm:"foreignKey:UserID" json:"profile,omitempty"`
@@ -301,8 +303,11 @@ type Transaction struct {
 	SellerID        string            `gorm:"type:varchar(36);not null;index" json:"seller_id"`
 	Status          TransactionStatus `gorm:"type:enum('pending','shipping','received','completed','cancelled');default:'pending'" json:"status"`
 	StatusUpdatedAt time.Time         `json:"status_updated_at"`
+	ShippingMethod  string            `gorm:"type:varchar(50)" json:"shipping_method,omitempty"`
+	TrackingNumber  string            `gorm:"type:varchar(100)" json:"tracking_number,omitempty"`
 	BuyerReviewed   bool              `gorm:"default:false" json:"buyer_reviewed"`
 	SellerReviewed  bool              `gorm:"default:false" json:"seller_reviewed"`
+	CancelReason    string            `gorm:"type:varchar(50)" json:"cancel_reason,omitempty"`
 	CreatedAt       time.Time         `json:"created_at"`
 }
 
@@ -431,6 +436,58 @@ type CreditScoreLog struct {
 func (c *CreditScoreLog) BeforeCreate(tx *gorm.DB) error {
 	if c.ID == "" {
 		c.ID = newUUID()
+	}
+	return nil
+}
+
+// ─── suspension_logs（停權紀錄）──────────────────────────────────────────────
+
+type SuspensionLog struct {
+	ID             string     `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	UserID         string     `gorm:"type:varchar(36);not null;index" json:"user_id"`
+	Reason         string     `gorm:"size:200;not null" json:"reason"`
+	Days           int        `gorm:"not null" json:"days"`
+	SuspendedAt    time.Time  `gorm:"not null" json:"suspended_at"`
+	SuspendedUntil time.Time  `gorm:"not null" json:"suspended_until"`
+	TransactionID  *string    `gorm:"type:varchar(36)" json:"transaction_id,omitempty"`
+	AppealDeadline *time.Time `json:"appeal_deadline,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+func (s *SuspensionLog) BeforeCreate(tx *gorm.DB) error {
+	if s.ID == "" {
+		s.ID = newUUID()
+	}
+	return nil
+}
+
+// ─── appeals（申訴紀錄）─────────────────────────────────────────────────────
+
+type AppealStatus string
+
+const (
+	AppealPending  AppealStatus = "pending"
+	AppealApproved AppealStatus = "approved"
+	AppealRejected AppealStatus = "rejected"
+)
+
+type Appeal struct {
+	ID              string         `gorm:"primaryKey;type:varchar(36)" json:"id"`
+	UserID          string         `gorm:"type:varchar(36);not null;index" json:"user_id"`
+	SuspensionLogID string         `gorm:"type:varchar(36);not null" json:"suspension_log_id"`
+	Reason          string         `gorm:"type:text;not null" json:"reason"`
+	EvidenceURL     string         `gorm:"type:varchar(500);not null" json:"evidence_url"`
+	Status          AppealStatus   `gorm:"type:varchar(20);default:'pending'" json:"status"`
+	AdminNote       string         `gorm:"type:text" json:"admin_note,omitempty"`
+	ReviewedAt      *time.Time     `json:"reviewed_at,omitempty"`
+	Deadline        time.Time      `gorm:"not null" json:"deadline"`
+	CreatedAt       time.Time      `json:"created_at"`
+	SuspensionLog   *SuspensionLog `gorm:"foreignKey:SuspensionLogID" json:"suspension_log,omitempty"`
+}
+
+func (a *Appeal) BeforeCreate(tx *gorm.DB) error {
+	if a.ID == "" {
+		a.ID = newUUID()
 	}
 	return nil
 }

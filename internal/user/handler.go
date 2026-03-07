@@ -41,12 +41,37 @@ func (h *Handler) GetMe(c *gin.Context) {
 	var profile model.UserProfile
 	database.DB.First(&user, "id = ?", userID)
 	database.DB.Where("user_id = ?", userID).First(&profile)
-	response.OK(c, gin.H{
+
+	result := gin.H{
 		"id":                   user.ID,
 		"email":                user.Email,
 		"onboarding_completed": user.OnboardingCompleted,
+		"suspended_until":      user.SuspendedUntil,
+		"suspend_reason":       user.SuspendReason,
 		"profile":              profile,
-	})
+	}
+
+	// 若停權中，附加申訴相關資訊
+	if user.SuspendedUntil != nil {
+		var suspLog model.SuspensionLog
+		if err := database.DB.
+			Where("user_id = ? AND appeal_deadline IS NOT NULL", userID).
+			Order("created_at DESC").
+			First(&suspLog).Error; err == nil {
+			result["appeal_deadline"] = suspLog.AppealDeadline
+
+			// 查詢是否已申訴
+			var appeal model.Appeal
+			if err := database.DB.
+				Where("suspension_log_id = ?", suspLog.ID).
+				First(&appeal).Error; err == nil {
+				result["appeal_status"] = appeal.Status
+				result["appeal_id"] = appeal.ID
+			}
+		}
+	}
+
+	response.OK(c, result)
 }
 
 type UpdateProfileRequest struct {

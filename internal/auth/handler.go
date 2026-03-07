@@ -39,13 +39,15 @@ type TokenResponse struct {
 }
 
 type UserSummary struct {
-	ID                  string  `json:"id"`
-	Email               string  `json:"email"`
-	Username            string  `json:"username"`
-	DisplayName         string  `json:"display_name"`
-	AvatarURL           *string `json:"avatar_url"`
-	AvatarColor         string  `json:"avatar_color"`
-	OnboardingCompleted bool    `json:"onboarding_completed"`
+	ID                  string     `json:"id"`
+	Email               string     `json:"email"`
+	Username            string     `json:"username"`
+	DisplayName         string     `json:"display_name"`
+	AvatarURL           *string    `json:"avatar_url"`
+	AvatarColor         string     `json:"avatar_color"`
+	OnboardingCompleted bool       `json:"onboarding_completed"`
+	SuspendedUntil      *time.Time `json:"suspended_until,omitempty"`
+	SuspendReason       string     `json:"suspend_reason,omitempty"`
 }
 
 type RefreshRequest struct {
@@ -492,5 +494,7 @@ func toUserSummary(u *model.User, p *model.UserProfile) UserSummary {
 		AvatarURL:           p.AvatarURL,
 		AvatarColor:         p.AvatarColor,
 		OnboardingCompleted: u.OnboardingCompleted,
+		SuspendedUntil:      u.SuspendedUntil,
+		SuspendReason:       u.SuspendReason,
 	}
 }

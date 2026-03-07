@@ -14,10 +14,12 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/benny-yang/veil-api/internal/config"
 	"github.com/benny-yang/veil-api/internal/model"
 	"github.com/benny-yang/veil-api/pkg/database"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
@@ -68,6 +70,7 @@ func Setup(m *testing.M) int {
 			&model.ChatParticipant{},
 			&model.ChatMessage{},
 			&model.CreditScoreLog{},
+			&model.SuspensionLog{},
 			&model.SystemConfig{},
 			&model.PasswordResetToken{},
 			&model.Notification{},
@@ -98,6 +101,7 @@ func TruncateAll(t *testing.T) {
 	tables := []string{
 		"notifications",
 		"password_reset_tokens",
+		"suspension_logs",
 		"credit_score_logs",
 		"chat_messages",
 		"chat_participants",
@@ -152,4 +156,21 @@ func BearerHeader(token string) map[string]string {
 	return map[string]string{
 		"Authorization": "Bearer " + token,
 	}
+}
+
+// GenerateTestToken 產生測試用的 JWT access token。
+func GenerateTestToken(userID string) string {
+	cfg := Config()
+	claims := jwt.MapClaims{
+		"sub":  userID,
+		"type": "access",
+		"exp":  time.Now().Add(time.Duration(cfg.JWTExpiryHours) * time.Hour).Unix(),
+		"iat":  time.Now().Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(cfg.JWTSecret))
+	if err != nil {
+		panic("testutil: 無法產生測試 token: " + err.Error())
+	}
+	return signed
 }
