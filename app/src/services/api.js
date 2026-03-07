@@ -129,6 +129,11 @@ export const notifApi = {
     markReadAll: () => api.patch('/notifications/read-all'),
 }
 
+// ── Review API ────────────────────────────────────────────────────────────────
+export const reviewApi = {
+    createReview: (txId, data) => api.post(`/transactions/${txId}/review`, data),
+}
+
 // ── Chat API ──────────────────────────────────────────────────────────────────
 export const chatApi = {
     getZoneChats: () => api.get('/chats/zones'),
@@ -138,7 +143,13 @@ export const chatApi = {
     sendMessage: (chatId, content, type = 'text') => api.post(`/chats/${chatId}/messages`, { type, content }),
     markRead: (chatId) => api.patch(`/chats/${chatId}/read`),
     getTransaction: (chatId) => api.get(`/chats/${chatId}/transaction`),
-    updateTransaction: (chatId, status) => api.patch(`/chats/${chatId}/transaction`, { status }),
+    updateTransaction: (chatId, status, extra = {}) => api.patch(`/chats/${chatId}/transaction`, { status, ...extra }),
+}
+
+// ── Appeal API ────────────────────────────────────────────────────────────────
+export const appealApi = {
+    create: (data) => api.post('/appeals', data),
+    getMyAppeal: () => api.get('/appeals/me'),
 }
 
 export default api

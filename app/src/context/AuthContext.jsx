@@ -1,8 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authApi } from '../services/api'
+import { authApi, userApi } from '../services/api'
 
 const AuthContext = createContext(null)
+
+/**
+ * 將 /users/me 回傳的嵌套結構攤平：
+ * { id, email, profile: { username, ... } } → { id, email, username, ... }
+ * 同時保留 appeal_deadline 等頂層欄位
+ */
+function flattenUser(raw) {
+    if (!raw) return raw
+    if (!raw.profile) return raw // 已是攤平格式（來自 authApi.me / login）
+    const { profile, ...rest } = raw
+    return { ...rest, ...profile }
+}
 
 /** 從 localStorage 讀取初始 user 狀態 */
 function loadUserFromStorage() {
@@ -19,6 +31,11 @@ export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(loadUserFromStorage)
     const [isLoading, setIsLoading] = useState(true)   // 驗證 token 期間顯示 loading
 
+    /** 判斷帳號是否處於停權狀態 */
+    const isSuspended = currentUser?.suspended_until
+        ? new Date(currentUser.suspended_until) > new Date()
+        : false
+
     /** App 啟動時驗證 token 是否仍然有效 */
     useEffect(() => {
         const token = localStorage.getItem('veil_access_token')
@@ -28,10 +45,10 @@ export function AuthProvider({ children }) {
             setIsLoading(false)
             return
         }
-        // 呼叫後端驗證 token，取得最新的 user 資料
-        authApi.me()
+        // 呼叫後端驗證 token，取得最新的 user 資料（含申訴資訊）
+        userApi.getMe()
             .then(res => {
-                const user = res.data.data || res.data
+                const user = flattenUser(res.data.data || res.data)
                 setCurrentUser(user)
                 localStorage.setItem('veil_user', JSON.stringify(user))
             })
@@ -51,6 +68,15 @@ export function AuthProvider({ children }) {
         localStorage.setItem('veil_refresh_token', tokens.refreshToken)
         localStorage.setItem('veil_user', JSON.stringify(user))
         setCurrentUser(user)
+
+        // 立即以完整的 /users/me 更新（含 appeal_deadline 等停權相關資訊）
+        userApi.getMe()
+            .then(res => {
+                const fullUser = flattenUser(res.data.data || res.data)
+                setCurrentUser(fullUser)
+                localStorage.setItem('veil_user', JSON.stringify(fullUser))
+            })
+            .catch(() => { /* 靜默失敗，已有初始 user 資料 */ })
     }, [])
 
     /** 更新 currentUser 中的 profile 資料（如大頭照、顯示名稱）*/
@@ -79,7 +105,7 @@ export function AuthProvider({ children }) {
     }, [clearSession, navigate])
 
     return (
-        <AuthContext.Provider value={{ currentUser, isLoading, login, logout, clearSession, updateProfile }}>
+        <AuthContext.Provider value={{ currentUser, isLoading, isSuspended, login, logout, clearSession, updateProfile }}>
             {children}
         </AuthContext.Provider>
     )

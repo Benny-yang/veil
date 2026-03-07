@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import AppNav from './components/AppNav'
+import SuspensionOverlay from './components/SuspensionOverlay'
 
 // Pages
 import Landing from './pages/Landing'
@@ -36,10 +37,12 @@ function ProtectedRoute({ children }) {
 
 function AppLayout() {
   const location = useLocation()
+  const { isSuspended } = useAuth()
   const isLanding = ['/', '/auth', '/onboarding'].includes(location.pathname)
 
   return (
     <>
+      {isSuspended && <SuspensionOverlay />}
       {!isLanding && <AppNav />}
       <main>
         <Routes>

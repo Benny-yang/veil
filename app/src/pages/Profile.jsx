@@ -269,7 +269,7 @@ function RatingsModal({ reviews, onClose }) {
                             </div>
                             {/* 匿名評語 */}
                             <p style={{ margin: 0, fontSize: 13, color: '#3A3531', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.7 }}>
-                                {r.text}
+                                {r.content}
                             </p>
                             <div style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginTop: 4 }}>匿名用戶</div>
                         </div>

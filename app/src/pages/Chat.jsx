@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { Send, ChevronDown, ChevronUp, UserCheck, Star, Package, CreditCard, CheckCircle, AlertTriangle, ArrowLeft } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
-import { chatApi, zoneApi } from '../services/api'
+import { chatApi, zoneApi, reviewApi } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ const TX_STEP_INDEX = Object.fromEntries(TX_STEPS.map((s, i) => [s.key, i]))
 
 // 逾時設定（開發環境 5 分鐘測試，正式環境依預設天數）
 const msPerDay = 86400000
-const DEV_TIMEOUT = 5 * 60 * 1000 // 5 分鐘
+const DEV_TIMEOUT = 60 * 1000 // 1 分鐘
 
 const TIMEOUT_MS = {
     pending: import.meta.env.DEV ? DEV_TIMEOUT : 3 * msPerDay,
@@ -122,6 +122,89 @@ function ConfirmDialog({ icon, title, desc, confirmLabel, confirmColor = '#1C1A1
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
                         fontWeight: 600, cursor: 'pointer',
                     }}>{confirmLabel}</button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+function ShippingConfirmDialog({ onConfirm, onCancel }) {
+    const [method, setMethod] = React.useState('')
+    const [tracking, setTracking] = React.useState('')
+    const inputStyle = {
+        width: '100%', padding: '10px 12px', borderRadius: 8, boxSizing: 'border-box',
+        border: '1.5px solid #E8DDD0', fontSize: 13,
+        fontFamily: 'Noto Sans TC, sans-serif', color: '#1C1A18',
+        outline: 'none', backgroundColor: '#FAF7F4',
+        transition: 'border-color 0.2s',
+    }
+    const labelStyle = { fontSize: 13, fontWeight: 500, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif', marginBottom: 6 }
+    const canSubmit = method.trim() !== ''
+    return (
+        <div onClick={onCancel} style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            backgroundColor: 'rgba(28,26,24,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(3px)',
+        }}>
+            <div onClick={e => e.stopPropagation()} style={{
+                width: 360, backgroundColor: '#FFFFFF', borderRadius: 16,
+                padding: 28, display: 'flex', flexDirection: 'column', gap: 16,
+                boxShadow: '0 16px 48px rgba(0,0,0,0.16)',
+            }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#1C1A18', fontFamily: 'Noto Sans TC, sans-serif' }}>
+                    確認已寄出
+                </div>
+                <div style={{ fontSize: 13, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif', lineHeight: 1.6 }}>
+                    請填寫物流資訊，買家將收到通知準備收貨。
+                </div>
+
+                {/* 物流方式 */}
+                <div>
+                    <div style={labelStyle}>物流方式 <span style={{ color: '#C4A882' }}>*</span></div>
+                    <select
+                        value={method}
+                        onChange={e => setMethod(e.target.value)}
+                        style={{ ...inputStyle, cursor: 'pointer' }}
+                        onFocus={e => e.target.style.borderColor = '#C4A882'}
+                        onBlur={e => e.target.style.borderColor = '#E8DDD0'}
+                    >
+                        <option value="">請選擇</option>
+                        <option value="7-11 交貨便">7-11 交貨便</option>
+                        <option value="全家店到店">全家店到店</option>
+                        <option value="黑貓宅急便">黑貓宅急便</option>
+                        <option value="郵局包裹">郵局包裹</option>
+                        <option value="蝦皮店到店">蝦皮店到店</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+
+                {/* 追蹤單號 */}
+                <div>
+                    <div style={labelStyle}>追蹤單號</div>
+                    <input
+                        type="text"
+                        value={tracking}
+                        onChange={e => setTracking(e.target.value)}
+                        placeholder="可選填，例如：EC123456789TW"
+                        style={inputStyle}
+                        onFocus={e => e.target.style.borderColor = '#C4A882'}
+                        onBlur={e => e.target.style.borderColor = '#E8DDD0'}
+                    />
+                </div>
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={onCancel} style={{
+                        flex: 1, padding: '11px 0', borderRadius: 8,
+                        border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
+                        fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
+                    }}>取消</button>
+                    <button onClick={() => canSubmit && onConfirm(method.trim(), tracking.trim())} style={{
+                        flex: 1, padding: '11px 0', borderRadius: 8, border: 'none',
+                        backgroundColor: canSubmit ? '#1C1A18' : '#D4CCC4', color: '#FFFFFF',
+                        fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
+                        fontWeight: 600, cursor: canSubmit ? 'pointer' : 'not-allowed',
+                    }}>確認已寄出</button>
                 </div>
             </div>
         </div>
@@ -316,11 +399,14 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
             const noReceiveBtn = { label: '未收到貨品', type: 'cancel', color: '#C0392B' }
 
             if (tx.status === 'pending' && viewerRole === 'seller')
-                return [cancelBtn, reviewBtn]
+                return [cancelBtn]
             if (tx.status === 'shipping' && viewerRole === 'buyer')
-                return [cancelBtn, reviewBtn]
+                return [cancelBtn]
             if (tx.status === 'received' && viewerRole === 'buyer')
-                return [noReceiveBtn, reviewBtn]
+                return [
+                    { label: '確認收貨', type: 'received→completed', color: '#2D7A4A' },
+                    noReceiveBtn,
+                ]
         }
 
         // 正常流程按鈕
@@ -329,7 +415,10 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
         if (tx.status === 'shipping' && viewerRole === 'seller')
             return [{ label: '確認寄出', type: 'shipping→received', color: '#1C1A18' }]
         if (tx.status === 'received' && viewerRole === 'buyer')
-            return [{ label: '確認收貨', type: 'received→completed', color: '#2D7A4A' }]
+            return [
+                { label: '確認收貨', type: 'received→completed', color: '#2D7A4A' },
+                { label: '未收到商品', type: 'not_received', color: '#C0392B', outline: true },
+            ]
 
         return []
     }
@@ -389,6 +478,21 @@ function TransactionBar({ tx, peerName, viewerRole, onAction }) {
                     ))}
                 </div>
             )}
+
+            {/* 待收貨倒數提示 */}
+            {tx.status === 'received' && !timedOut && !isCancelled && tx.updatedAt && (() => {
+                const elapsed = (Date.now() - new Date(tx.updatedAt).getTime()) / (1000 * 60 * 60 * 24)
+                const remaining = Math.max(0, Math.ceil(7 - elapsed))
+                return remaining > 0 ? (
+                    <div style={{
+                        padding: '0 24px 12px',
+                        fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif',
+                        textAlign: 'right',
+                    }}>
+                        ⏳ 剩餘 {remaining} 天將自動完成
+                    </div>
+                ) : null
+            })()}
 
         </div>
     )
@@ -673,6 +777,7 @@ function normalizeZoneChats(chats, myUserID) {
         const rawTx = chat.transaction
         const hasTx = !!rawTx
         const tx = hasTx ? {
+            id: rawTx.id,
             status: rawTx.status,
             updatedAt: new Date(rawTx.status_updated_at).getTime(),
             buyerReviewed: rawTx.buyer_reviewed ?? false,
@@ -932,6 +1037,22 @@ export default function Chat() {
                 }
             }))
 
+            // 取得後端建立的完整交易資料（含 ID）
+            try {
+                const txRes = await chatApi.getTransaction(chatId)
+                const txData = txRes.data.data || txRes.data
+                const realTx = txData.transaction
+                if (realTx?.id) {
+                    setZoneChats(prev => prev.map(z => ({
+                        ...z,
+                        chats: z.chats.map(c => c.id === chatId
+                            ? { ...c, tx: { ...c.tx, id: realTx.id } }
+                            : c
+                        ),
+                    })))
+                }
+            } catch (_) { /* 不影響主流程 */ }
+
             addSysMsg(chatId, `✅ ${peerName} 已被設為私藏家`)
             addSysMsg(chatId, '💳 交易已建立，等待買家付款')
             showToast(`${peerName} 已成為私藏家`, 'success')
@@ -955,11 +1076,12 @@ export default function Chat() {
         const zoneId = zoneChatMeta.zone.zoneId
 
         if (action === 'review' || action === 'force_review') {
-            const timedOut = isTimedOut(zoneChatMeta.chat.tx)
+            const isCancelled = zoneChatMeta.chat.tx?.status === 'cancelled'
+            const isForced = action === 'force_review'
             setReviewTarget({
                 chatId,
                 peerName: zoneChatMeta.chat.peer,
-                maxScore: timedOut ? 3 : 5
+                maxScore: (isCancelled || isForced) ? 2 : 5
             })
             return
         }
@@ -974,6 +1096,7 @@ export default function Chat() {
                 label: '確認已寄出',
                 desc: '請確認商品已交給物流，買家將收到通知準備收貨。',
                 color: '#1C1A18',
+                needsShipping: true,
             },
             'received→completed': {
                 label: '確認收貨',
@@ -982,18 +1105,27 @@ export default function Chat() {
             },
             'cancel': {
                 label: '取消交易',
-                desc: '確認取消此筆交易？取消後仍可留下評價，最高 3 顆星。',
+                desc: '確認取消此筆交易？取消後仍可留下評價，最高 2 顆星。',
                 color: '#C0392B',
                 nextStatus: 'cancelled',
+            },
+            'not_received': {
+                label: '未收到商品',
+                desc: '確認您未收到商品？交易將被取消，您可以留下評價（最高 2 星），賣家將被停權處理。',
+                color: '#C0392B',
+                nextStatus: 'cancelled',
+                cancelReason: 'not_received',
             },
         }
         const cfg = TX_CONFIRM[action]
         if (cfg) setConfirmTx({ chatId, zoneId, action, ...cfg })
     }
 
-    const executeTxAction = async () => {
+    const executeTxAction = async (overrides = {}) => {
         if (!confirmTx) return
-        const { chatId, action, nextStatus: configNextStatus } = confirmTx
+        const { chatId, action, nextStatus: configNextStatus, cancelReason } = confirmTx
+        const shippingMethod = overrides.shippingMethod || ''
+        const trackingNumber = overrides.trackingNumber || ''
         setConfirmTx(null)
 
         const nextStatus = configNextStatus || action.split('→')[1]
@@ -1001,11 +1133,26 @@ export default function Chat() {
             shipping: '💳 買家已確認付款，請準備寄出商品',
             received: '📦 賣家已寄出商品，請注意查收',
             completed: '🎉 交易完成！感謝你的參與',
-            cancelled: '❌ 交易已取消',
+            cancelled: cancelReason === 'not_received'
+                ? '⚠️ 買家反應未收到商品，交易已取消'
+                : '❌ 交易已取消',
+        }
+
+        // 若有物流資訊，加到系統訊息
+        let sysMsg = sysTexts[nextStatus]
+        if (nextStatus === 'received' && (shippingMethod || trackingNumber)) {
+            const parts = []
+            if (shippingMethod) parts.push(`物流方式：${shippingMethod}`)
+            if (trackingNumber) parts.push(`追蹤單號：${trackingNumber}`)
+            sysMsg += '\n' + parts.join('\n')
         }
 
         try {
-            await chatApi.updateTransaction(chatId, nextStatus)
+            const extra = {}
+            if (shippingMethod) extra.shipping_method = shippingMethod
+            if (trackingNumber) extra.tracking_number = trackingNumber
+            if (cancelReason) extra.cancel_reason = cancelReason
+            await chatApi.updateTransaction(chatId, nextStatus, extra)
             // 樂觀更新本地 zone chat tx 狀態
             setZoneChats(prev => prev.map(z => ({
                 ...z,
@@ -1014,14 +1161,35 @@ export default function Chat() {
                     : c
                 ),
             })))
-            addSysMsg(chatId, sysTexts[nextStatus])
+            addSysMsg(chatId, sysMsg)
+
+            // 物流資訊發送到聊天室讓雙方都能看到
+            if (nextStatus === 'received' && (shippingMethod || trackingNumber)) {
+                const msgParts = ['📦 物流資訊']
+                if (shippingMethod) msgParts.push(`物流方式：${shippingMethod}`)
+                if (trackingNumber) msgParts.push(`追蹤單號：${trackingNumber}`)
+                try {
+                    await chatApi.sendMessage(chatId, msgParts.join('\n'))
+                    // 加到本地訊息列表
+                    const now = new Date().toISOString()
+                    setMessages(prev => ({
+                        ...prev,
+                        [chatId]: [...(prev[chatId] || []), {
+                            id: 'local-ship-' + Date.now(),
+                            sender_id: currentUser?.id,
+                            type: 'text',
+                            content: msgParts.join('\n'),
+                            created_at: now,
+                        }],
+                    }))
+                } catch { /* 靜默失敗 */ }
+            }
             if (nextStatus === 'completed' || nextStatus === 'cancelled') {
                 setTimeout(() => {
-                    const tx = findZoneChat(chatId)?.chat.tx
                     setReviewTarget({
                         chatId,
                         peerName: findZoneChat(chatId)?.chat.peer || '',
-                        maxScore: isTimedOut(tx) ? 3 : 5
+                        maxScore: nextStatus === 'cancelled' ? 2 : 5
                     })
                 }, 600)
             }
@@ -1031,27 +1199,54 @@ export default function Chat() {
     }
 
     // ── 提交評價 ─────────────────────────────────────────────────────────────
-    const submitReview = (score, comment) => {
-        if (!reviewTarget) return
+    const [submittingReview, setSubmittingReview] = useState(false)
+
+    const submitReview = async (score, comment) => {
+        if (!reviewTarget || submittingReview) return
         const { chatId } = reviewTarget
-        setReviewTarget(null)
 
-        const stars = '★'.repeat(score) + '☆'.repeat(5 - score)
-        addSysMsg(chatId, `${stars} 評價已送出（${score} 顆星）`)
+        // 取得 transaction ID
+        const chatMeta = findZoneChat(chatId)
+        const txId = chatMeta?.chat?.tx?.id
+        if (!txId) {
+            showToast('找不到交易資料，無法送出評價')
+            setReviewTarget(null)
+            return
+        }
 
-        setZoneChats(prev => prev.map(z => ({
-            ...z,
-            chats: z.chats.map(c => c.id === chatId
-                ? {
-                    ...c, tx: {
-                        ...c.tx,
-                        sellerReviewed: viewerRole === 'seller' ? true : c.tx?.sellerReviewed,
-                        buyerReviewed: viewerRole === 'buyer' ? true : c.tx?.buyerReviewed,
+        setSubmittingReview(true)
+        try {
+            await reviewApi.createReview(txId, {
+                stars: score,
+                content: comment || '（無留言）',
+            })
+
+            // API 成功 → 關閉彈窗、更新本地狀態
+            setReviewTarget(null)
+
+            const stars = '★'.repeat(score) + '☆'.repeat(5 - score)
+            addSysMsg(chatId, `${stars} 評價已送出（${score} 顆星）`)
+
+            setZoneChats(prev => prev.map(z => ({
+                ...z,
+                chats: z.chats.map(c => c.id === chatId
+                    ? {
+                        ...c, tx: {
+                            ...c.tx,
+                            sellerReviewed: viewerRole === 'seller' ? true : c.tx?.sellerReviewed,
+                            buyerReviewed: viewerRole === 'buyer' ? true : c.tx?.buyerReviewed,
+                        }
                     }
-                }
-                : c
-            ),
-        })))
+                    : c
+                ),
+            })))
+            showToast('評價已送出', 'success')
+        } catch (e) {
+            console.error('評價送出失敗', e)
+            showToast(extractErrorMessage(e))
+        } finally {
+            setSubmittingReview(false)
+        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1339,14 +1534,23 @@ export default function Chat() {
 
             {/* 交易操作確認 */}
             {confirmTx && (
-                <ConfirmDialog
-                    title={confirmTx.label}
-                    desc={confirmTx.desc}
-                    confirmLabel={confirmTx.label}
-                    confirmColor={confirmTx.color}
-                    onConfirm={executeTxAction}
-                    onCancel={() => setConfirmTx(null)}
-                />
+                confirmTx.needsShipping ? (
+                    <ShippingConfirmDialog
+                        onConfirm={(method, tracking) => {
+                            executeTxAction({ shippingMethod: method, trackingNumber: tracking })
+                        }}
+                        onCancel={() => setConfirmTx(null)}
+                    />
+                ) : (
+                    <ConfirmDialog
+                        title={confirmTx.label}
+                        desc={confirmTx.desc}
+                        confirmLabel={confirmTx.label}
+                        confirmColor={confirmTx.color}
+                        onConfirm={() => executeTxAction()}
+                        onCancel={() => setConfirmTx(null)}
+                    />
+                )
             )}
 
             {/* 評價 Modal */}
