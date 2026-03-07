@@ -117,6 +117,25 @@ func (h *Handler) CreateReview(c *gin.Context) {
 		role = model.ReviewerSeller
 	}
 
+	// ── 停權判斷（新增與修改評價皆須執行，且防重複） ──────────────
+	if isSeller && shouldSuspendBuyer(tx, h.txTimeoutDays) {
+		reason := "交易待付款超時未處理"
+		if !hasSuspensionLog(tx.BuyerID, txID, reason) {
+			log.Printf("[停權判斷] → 停權買家 %s", tx.BuyerID)
+			suspendBuyer(tx.BuyerID, txID)
+		}
+	}
+	if isBuyer && shouldSuspendSeller(tx, h.txTimeoutDays) {
+		reason := "交易出貨超時未處理"
+		if tx.CancelReason == "not_received" {
+			reason = "買家反應未收到貨品"
+		}
+		if !hasSuspensionLog(tx.SellerID, txID, reason) {
+			log.Printf("[停權判斷] → 停權賣家 %s", tx.SellerID)
+			suspendSeller(tx.SellerID, txID, tx.CancelReason)
+		}
+	}
+
 	if hasExisting {
 		// 修改既有評價
 		database.DB.Model(&existingReview).Updates(map[string]interface{}{
@@ -152,19 +171,6 @@ func (h *Handler) CreateReview(c *gin.Context) {
 	// 信用分數調整（依 PRD 規則）
 	isForced := tx.Status != model.TxCompleted
 	applyCreditScoreChange(revieweeID, req.Stars, isForced)
-
-	// ── 停權邏輯 ─────────────────────────────────────────────────────────────
-	// 1. 買家停權：賣家評價 pending 超時交易（或因 pending 超時而取消的交易）
-	// 2. 賣家停權：買家評價 shipping 超時取消的交易（買家取消後評價 → 賣家停權 + 可申訴 3 天）
-	log.Printf("[停權判斷] isBuyer=%v isSeller=%v txStatus=%s", isBuyer, isSeller, tx.Status)
-	if isSeller && shouldSuspendBuyer(tx, h.txTimeoutDays) {
-		log.Printf("[停權判斷] → 停權買家 %s", tx.BuyerID)
-		suspendBuyer(tx.BuyerID, txID)
-	}
-	if isBuyer && shouldSuspendSeller(tx, h.txTimeoutDays) {
-		log.Printf("[停權判斷] → 停權賣家 %s", tx.SellerID)
-		suspendSeller(tx.SellerID, txID, tx.CancelReason)
-	}
 
 	response.Created(c, review)
 }
@@ -260,6 +266,15 @@ func suspendSeller(sellerID string, transactionID string, cancelReason string) {
 		TransactionID:  &transactionID,
 		AppealDeadline: &appealDeadline,
 	})
+}
+
+// hasSuspensionLog 檢查是否已為某個交易存在相同原因的停權紀錄
+func hasSuspensionLog(userID string, txID string, reason string) bool {
+	var count int64
+	database.DB.Model(&model.SuspensionLog{}).
+		Where("user_id = ? AND transaction_id = ? AND reason = ?", userID, txID, reason).
+		Count(&count)
+	return count > 0
 }
 
 // applyCreditScoreChange 依據 PRD 信用分規則計算加減分

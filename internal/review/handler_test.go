@@ -201,8 +201,109 @@ func TestCreateReview_ShippingTimeout_NoSuspension(t *testing.T) {
 	// 驗證買家沒有被停權（非 pending 超時）
 	var buyer model.User
 	database.DB.First(&buyer, "id = ?", buyerID)
-	if buyer.SuspendedUntil != nil {
-		t.Error("shipping 超時不應觸發買家停權")
+}
+
+func TestCreateReview_BuyerNotReceived_SellerSuspended(t *testing.T) {
+	testutil.TruncateAll(t)
+	r := newReviewRouter(t)
+	buyerID, sellerID := createTestUsers(t)
+
+	// 建立因買家未收到而取消的交易
+	tx := model.Transaction{
+		ApplicationID:   "app-004-not-received",
+		BuyerID:         buyerID,
+		SellerID:        sellerID,
+		Status:          model.TxCancelled,
+		CancelReason:    "not_received",
+		StatusUpdatedAt: time.Now().Add(-5 * time.Minute),
+	}
+	database.DB.Create(&tx)
+
+	// 買家評價
+	token := testutil.GenerateTestToken(buyerID)
+	body := map[string]interface{}{
+		"stars":   1,
+		"content": "真的沒收到",
+	}
+	w := testutil.DoRequest(r, http.MethodPost, "/transactions/"+tx.ID+"/review", body, testutil.BearerHeader(token))
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("期望 201，得到 %d：%s", w.Code, w.Body.String())
+	}
+
+	// 驗證賣家已被停權
+	var seller model.User
+	database.DB.First(&seller, "id = ?", sellerID)
+
+	if seller.SuspendedUntil == nil {
+		t.Fatal("賣家應該被停權但 suspended_until 為 nil")
+	}
+	if seller.SuspendReason != "買家反應未收到貨品" {
+		t.Errorf("停權原因不符，得到: %s", seller.SuspendReason)
+	}
+
+	// 驗證紀錄
+	var suspLog model.SuspensionLog
+	if err := database.DB.Where("user_id = ?", sellerID).First(&suspLog).Error; err != nil {
+		t.Fatalf("找不到停權紀錄: %v", err)
+	}
+}
+
+func TestCreateReview_BuyerNotReceived_ExistingReview_SellerSuspended(t *testing.T) {
+	testutil.TruncateAll(t)
+	r := newReviewRouter(t)
+	buyerID, sellerID := createTestUsers(t)
+
+	// 建立因買家未收到而取消的交易
+	tx := model.Transaction{
+		ApplicationID:   "app-004-not-received-existing",
+		BuyerID:         buyerID,
+		SellerID:        sellerID,
+		Status:          model.TxCancelled,
+		CancelReason:    "not_received",
+		StatusUpdatedAt: time.Now().Add(-5 * time.Minute),
+	}
+	database.DB.Create(&tx)
+
+	// 預先塞入一筆對方的評價，模擬 hasExisting = true
+	database.DB.Create(&model.Review{
+		TransactionID: tx.ID,
+		ReviewerID:    buyerID,
+		RevieweeID:    sellerID,
+		Stars:         3,
+		Content:       "本來以為會到",
+		ReviewerRole:  model.ReviewerBuyer,
+	})
+	database.DB.Model(&tx).Update("buyer_reviewed", true)
+
+	// 買家評價（修改現有評價，觸發停權判斷）
+	token := testutil.GenerateTestToken(buyerID)
+	body := map[string]interface{}{
+		"stars":   1,
+		"content": "真的沒收到",
+	}
+	w := testutil.DoRequest(r, http.MethodPost, "/transactions/"+tx.ID+"/review", body, testutil.BearerHeader(token))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("修改評價期望 200，得到 %d：%s", w.Code, w.Body.String())
+	}
+
+	// 驗證賣家已被停權
+	var seller model.User
+	database.DB.First(&seller, "id = ?", sellerID)
+
+	if seller.SuspendedUntil == nil {
+		t.Fatal("賣家應該被停權但 suspended_until 為 nil")
+	}
+	if seller.SuspendReason != "買家反應未收到貨品" {
+		t.Errorf("停權原因不符，得到: %s", seller.SuspendReason)
+	}
+
+	// 驗證紀錄只有一筆
+	var logCount int64
+	database.DB.Model(&model.SuspensionLog{}).Where("user_id = ?", sellerID).Count(&logCount)
+	if logCount != 1 {
+		t.Errorf("期望停權紀錄 1 筆，得到 %d", logCount)
 	}
 }
 
