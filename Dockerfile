@@ -16,6 +16,9 @@ WORKDIR /app
 
 COPY --from=builder /build/server ./server
 
+# 管理員介面靜態檔案
+COPY --from=builder /build/admin-dist ./admin-dist
+
 # 上傳檔案暫存目錄
 RUN mkdir -p /app/uploads
 
