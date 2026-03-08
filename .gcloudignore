@@ -1,0 +1,4 @@
+# Cloud Build 忽略清單
+.git
+node_modules
+.DS_Store
