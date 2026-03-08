@@ -1,26 +1,53 @@
 package media
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/benny-yang/veil-api/pkg/response"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
+// Handler 支援本地檔案系統與 GCS 雲端儲存兩種模式
 type Handler struct {
-	uploadDir string
-	baseURL   string
+	uploadDir string          // 本地上傳目錄
+	baseURL   string          // 本地模式的 base URL
+	gcsBucket string          // GCS bucket name（空字串 = 本地模式）
+	gcsClient *storage.Client // GCS client（nil = 本地模式）
 }
 
-func NewHandler(uploadDir, baseURL string) *Handler {
-	os.MkdirAll(uploadDir, 0755)
-	return &Handler{uploadDir: uploadDir, baseURL: baseURL}
+// NewHandler 建立 media handler
+// 若 gcsBucket 不為空，則使用 GCS 雲端儲存；否則使用本地檔案系統
+func NewHandler(uploadDir, baseURL, gcsBucket string) *Handler {
+	h := &Handler{
+		uploadDir: uploadDir,
+		baseURL:   baseURL,
+		gcsBucket: gcsBucket,
+	}
+
+	if gcsBucket != "" {
+		client, err := storage.NewClient(context.Background())
+		if err != nil {
+			log.Printf("⚠️ GCS client 建立失敗，將使用本地儲存: %v", err)
+			h.gcsBucket = ""
+		} else {
+			h.gcsClient = client
+			log.Printf("✅ GCS 儲存已啟用 [bucket: %s]", gcsBucket)
+		}
+	} else {
+		os.MkdirAll(uploadDir, 0755)
+		log.Printf("📁 使用本地儲存 [%s]", uploadDir)
+	}
+
+	return h
 }
 
 var allowedMIME = map[string]string{
@@ -30,10 +57,10 @@ var allowedMIME = map[string]string{
 	"image/gif":  ".gif",
 }
 
+// Upload 處理圖片上傳
 // POST /media/upload
 // Content-Type: multipart/form-data, field: "file"
 func (h *Handler) Upload(c *gin.Context) {
-	// 限制解析大小 10 MB
 	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
 		response.BadRequest(c, "FILE_TOO_LARGE", "圖片大小不能超過 10 MB")
 		return
@@ -46,7 +73,6 @@ func (h *Handler) Upload(c *gin.Context) {
 	}
 	defer file.Close()
 
-	// 讀取前 512 bytes 偵測 MIME
 	buf := make([]byte, 512)
 	n, _ := file.Read(buf)
 	mimeType := http.DetectContentType(buf[:n])
@@ -57,39 +83,83 @@ func (h *Handler) Upload(c *gin.Context) {
 		return
 	}
 
-	// 按日期建立目錄
 	dateDir := time.Now().Format("2006/01/02")
-	dir := filepath.Join(h.uploadDir, dateDir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		response.InternalError(c)
-		return
-	}
-
 	filename := uuid.New().String() + ext
-	destPath := filepath.Join(dir, filename)
 
-	dst, err := os.Create(destPath)
+	var urlPath string
+
+	if h.isGCSEnabled() {
+		urlPath, err = h.uploadToGCS(buf[:n], file, dateDir, filename, mimeType)
+	} else {
+		urlPath, err = h.uploadToLocal(buf[:n], file, dateDir, filename)
+	}
+
 	if err != nil {
-		response.InternalError(c)
-		return
-	}
-	defer dst.Close()
-
-	// 先把已讀的 512 bytes 寫入，再複製剩餘內容
-	if _, err := dst.Write(buf[:n]); err != nil {
-		response.InternalError(c)
-		return
-	}
-	if _, err := io.Copy(dst, file); err != nil {
+		log.Printf("圖片上傳失敗: %v", err)
 		response.InternalError(c)
 		return
 	}
 
-	urlPath := fmt.Sprintf("%s/uploads/%s/%s", h.baseURL, dateDir, filename)
 	response.OK(c, gin.H{
 		"url":      urlPath,
 		"filename": filename,
 		"size":     header.Size,
 		"type":     mimeType,
 	})
+}
+
+// isGCSEnabled 檢查是否使用 GCS 模式
+func (h *Handler) isGCSEnabled() bool {
+	return h.gcsBucket != "" && h.gcsClient != nil
+}
+
+// uploadToGCS 上傳檔案到 GCS
+func (h *Handler) uploadToGCS(headBytes []byte, remaining io.Reader, dateDir, filename, mimeType string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	objectName := fmt.Sprintf("uploads/%s/%s", dateDir, filename)
+	writer := h.gcsClient.Bucket(h.gcsBucket).Object(objectName).NewWriter(ctx)
+	writer.ContentType = mimeType
+	writer.CacheControl = "public, max-age=31536000"
+
+	if _, err := writer.Write(headBytes); err != nil {
+		writer.Close()
+		return "", fmt.Errorf("GCS 寫入 header 失敗: %w", err)
+	}
+	if _, err := io.Copy(writer, remaining); err != nil {
+		writer.Close()
+		return "", fmt.Errorf("GCS 寫入內容失敗: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return "", fmt.Errorf("GCS 關閉 writer 失敗: %w", err)
+	}
+
+	publicURL := fmt.Sprintf("https://storage.googleapis.com/%s/%s", h.gcsBucket, objectName)
+	return publicURL, nil
+}
+
+// uploadToLocal 上傳檔案到本地檔案系統
+func (h *Handler) uploadToLocal(headBytes []byte, remaining io.Reader, dateDir, filename string) (string, error) {
+	dir := filepath.Join(h.uploadDir, dateDir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("建立目錄失敗: %w", err)
+	}
+
+	destPath := filepath.Join(dir, filename)
+	dst, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("建立檔案失敗: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := dst.Write(headBytes); err != nil {
+		return "", fmt.Errorf("寫入 header 失敗: %w", err)
+	}
+	if _, err := io.Copy(dst, remaining); err != nil {
+		return "", fmt.Errorf("寫入內容失敗: %w", err)
+	}
+
+	urlPath := fmt.Sprintf("%s/uploads/%s/%s", h.baseURL, dateDir, filename)
+	return urlPath, nil
 }

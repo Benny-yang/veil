@@ -82,7 +82,7 @@ func main() {
 	uploadDir := filepath.Join(".", "uploads")
 	baseURL := cfg.AppBaseURL
 	emailSvc := email.NewService(cfg.ResendAPIKey, cfg.EmailFrom, cfg.AppEnv)
-	mediaH := media.NewHandler(uploadDir, baseURL)
+	mediaH := media.NewHandler(uploadDir, baseURL, cfg.GCSBucketName)
 
 	// ── Gin 路由設定 ─────────────────────────────────────────────────────────
 	if cfg.AppEnv == "production" {
