@@ -71,6 +71,13 @@ func UnprocessableEntity(c *gin.Context, code, message string) {
 	})
 }
 
+func TooManyRequests(c *gin.Context, code, message string) {
+	c.JSON(http.StatusTooManyRequests, Response{
+		Success: false,
+		Error:   &ErrorBody{Code: code, Message: message},
+	})
+}
+
 func InternalError(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, Response{
 		Success: false,

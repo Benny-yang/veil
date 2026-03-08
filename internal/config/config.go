@@ -47,6 +47,10 @@ type Config struct {
 	// 交易超時天數
 	TxTimeoutDays map[string]int
 
+	// Zone 月度操作限制（未驗證帳號）
+	ZoneCreateLimit int
+	ZoneApplyLimit  int
+
 	// 管理者
 	AdminUsername  string
 	AdminPassword  string
@@ -99,6 +103,8 @@ func Load() (*Config, error) {
 		CreditScoreInit:      getEnvInt("CREDIT_SCORE_INIT", 60),
 		CreditScoreMax:       getEnvInt("CREDIT_SCORE_MAX", 100),
 		TxTimeoutDays:        txTimeoutDays,
+		ZoneCreateLimit:      getEnvInt("ZONE_CREATE_LIMIT", 5),
+		ZoneApplyLimit:       getEnvInt("ZONE_APPLY_LIMIT", 10),
 		AdminUsername:        getEnv("ADMIN_USERNAME", "admin"),
 		AdminPassword:        getEnv("ADMIN_PASSWORD", "admin1234"),
 		AdminJWTSecret:       getEnv("ADMIN_JWT_SECRET", ""),

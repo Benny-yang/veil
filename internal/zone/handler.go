@@ -12,9 +12,18 @@ import (
 	"gorm.io/gorm"
 )
 
-type Handler struct{}
+type Handler struct {
+	monthlyLimit *MonthlyLimitConfig
+}
 
-func NewHandler() *Handler { return &Handler{} }
+func NewHandler(createLimit, applyLimit int) *Handler {
+	return &Handler{
+		monthlyLimit: &MonthlyLimitConfig{
+			CreateLimit: createLimit,
+			ApplyLimit:  applyLimit,
+		},
+	}
+}
 
 // GET /zones
 func (h *Handler) ListZones(c *gin.Context) {
@@ -90,6 +99,12 @@ func (h *Handler) CreateZone(c *gin.Context) {
 	var req CreateZoneRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	// 月度建立限制檢查
+	if h.monthlyLimit.CheckCreateLimit(userID) {
+		response.TooManyRequests(c, "MONTHLY_LIMIT_EXCEEDED", "本月建立私藏次數已達上限，請完成真人驗證以解除限制")
 		return
 	}
 
@@ -276,6 +291,12 @@ func (h *Handler) Apply(c *gin.Context) {
 			response.UnprocessableEntity(c, "CREDIT_TOO_LOW", "信用分數不足")
 			return
 		}
+	}
+
+	// 月度申請限制檢查
+	if h.monthlyLimit.CheckApplyLimit(userID) {
+		response.TooManyRequests(c, "MONTHLY_LIMIT_EXCEEDED", "本月申請次數已達上限，請完成真人驗證以解除限制")
+		return
 	}
 
 	var req ApplyRequest

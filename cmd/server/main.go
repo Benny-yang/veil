@@ -103,7 +103,7 @@ func main() {
 	authH := auth.NewHandler(cfg.JWTSecret, cfg.JWTExpiryHours, cfg.JWTRefreshExpiryDays, emailSvc, baseURL)
 	userH := userhandler.NewHandler()
 	workH := work.NewHandler()
-	zoneH := zone.NewHandler()
+	zoneH := zone.NewHandler(cfg.ZoneCreateLimit, cfg.ZoneApplyLimit)
 	chatH := chathandler.NewHandler(txTimeoutDays)
 	reviewH := review.NewHandler(txTimeoutDays)
 	creditH := credit.NewHandler()
