@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, X, User, LogOut } from 'lucide-react'
+import { LayoutGrid, Search, Bookmark, Bell, Mail, Heart, MessageCircle, ClipboardCheck, ArrowRightLeft, X, User, LogOut } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import { useAuth } from '../context/AuthContext'
 import { notifApi, chatApi } from '../services/api'
@@ -42,6 +42,7 @@ const TYPE_CONFIG = {
     zone_apply: { Icon: ClipboardCheck, color: '#C4A882', bg: '#FBF6EF', label: '申請' },
     zone_approved: { Icon: ClipboardCheck, color: '#2D7A4A', bg: '#EEF8F2', label: '通過' },
     zone_rejected: { Icon: ClipboardCheck, color: '#B0A89A', bg: '#F5F2EF', label: '未通過' },
+    tx_update: { Icon: ArrowRightLeft, color: '#8B6914', bg: '#FFF8E7', label: '交易' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -304,9 +305,13 @@ function ChatBadge() {
         let cancelled = false
         const load = async () => {
             try {
-                const res = await chatApi.getDmChats()
-                const chats = res.data.data || []
-                const total = chats.reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
+                const [dmRes, zoneRes] = await Promise.all([
+                    chatApi.getDmChats(),
+                    chatApi.getZoneChats(),
+                ])
+                const dmChats = dmRes.data.data || []
+                const zoneChats = zoneRes.data.data || []
+                const total = [...dmChats, ...zoneChats].reduce((sum, c) => sum + (c.unread_count ?? 0), 0)
                 if (!cancelled) setUnread(total)
             } catch { /* 靜默 */ }
         }
