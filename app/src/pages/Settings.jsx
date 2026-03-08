@@ -253,12 +253,27 @@ export default function Settings() {
     // ── 載入 me 資料 ─────────────────────────────────────────────────────────
     const loadMe = useCallback(async () => {
         try {
-            const res = await userApi.getMe()
-            const d = res.data.data
+            const [meRes, verRes] = await Promise.all([
+                userApi.getMe(),
+                verificationApi.getRealPersonStatus(),
+            ])
+            const d = meRes.data.data
             setMeData(d)
             setDisplayName(d.profile?.display_name || '')
             setBio(d.profile?.bio || '')
-        } catch { /* 保持舊資料 */ }
+            // 從後端同步真人驗證狀態
+            const verData = verRes.data.data
+            if (verData?.status === 'verified') {
+                setRealPersonStatus('verified')
+            } else if (verData?.status === 'pending') {
+                setRealPersonStatus('pending')
+            } else if (verData?.status === 'failed') {
+                setRealPersonStatus('failed')
+                setRealPersonFailureReason(verData?.failure_reason || '審核未通過')
+            } else {
+                setRealPersonStatus('none')
+            }
+        } catch (err) { console.error('載入使用者資料失敗:', err) }
         finally { setLoading(false) }
     }, [])
 
@@ -305,25 +320,15 @@ export default function Settings() {
             setSaving(false)
         }
     }
-    // Mock: 提交後與後端同步審核結果，這裡用亂數模擬
-    const MOCK_FAILURE_REASONS = [
-        '自拍照片中的手寫文字不清晰，無法辨識帳號或日期',
-        '照片疑似為截圖或非本人拍攝，請重新拍攝真實照片',
-    ]
-
-    const handleRealPersonSubmit = () => {
+    const handleRealPersonSubmit = async (formData) => {
         setShowRealModal(false)
         setRealPersonStatus('pending')
-        // Mock 審核結果（2.5 秒後模擬）
-        setTimeout(() => {
-            if (Math.random() < 0.35) {
-                const reason = MOCK_FAILURE_REASONS[Math.floor(Math.random() * MOCK_FAILURE_REASONS.length)]
-                setRealPersonStatus('failed')
-                setRealPersonFailureReason(reason)
-            } else {
-                setRealPersonStatus('verified')
-            }
-        }, 2500)
+        try {
+            await verificationApi.submitRealPerson(formData)
+        } catch (err) {
+            console.error('真人驗證提交失敗:', err)
+            setRealPersonStatus('none')
+        }
     }
 
     const isMobile = useIsMobile()

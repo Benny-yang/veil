@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { X, Upload, Phone, CheckCircle2 } from 'lucide-react'
+import { mediaApi } from '../services/api'
 
 const font = 'Noto Sans TC, sans-serif'
 
@@ -32,8 +33,10 @@ export function Overlay({ onClose, children }) {
 export function RealPersonModal({ onClose, onSubmit }) {
     const [platform, setPlatform] = useState('')
     const [profileUrl, setProfileUrl] = useState('')
-    const [photo, setPhoto] = useState(null)
+    const [photo, setPhoto] = useState(null)       // base64 preview
+    const [photoFile, setPhotoFile] = useState(null) // 原始 File 物件
     const [submitting, setSubmitting] = useState(false)
+    const [submitError, setSubmitError] = useState('')
     const fileRef = useRef()
 
     const today = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -41,6 +44,7 @@ export function RealPersonModal({ onClose, onSubmit }) {
     const handleFile = (e) => {
         const file = e.target.files[0]
         if (!file) return
+        setPhotoFile(file)
         const reader = new FileReader()
         reader.onload = ev => setPhoto(ev.target.result)
         reader.readAsDataURL(file)
@@ -49,11 +53,23 @@ export function RealPersonModal({ onClose, onSubmit }) {
 
     const canSubmit = platform.trim() && profileUrl.trim() && photo
 
-    const handleSubmit = () => {
-        if (!canSubmit) return
+    const handleSubmit = async () => {
+        if (!canSubmit || !photoFile) return
         setSubmitting(true)
-        // 回傳給呼叫端處理狀態，0.8 秒後關閉
-        setTimeout(() => { onSubmit(); onClose() }, 800)
+        setSubmitError('')
+        // 自動補上 https:// 前綴
+        const normalizedUrl = profileUrl.match(/^https?:\/\//) ? profileUrl : `https://${profileUrl}`
+        try {
+            // 1. 上傳圖片到 media API
+            const uploadRes = await mediaApi.upload(photoFile)
+            const photoUrl = uploadRes.data.data?.url
+            if (!photoUrl) throw new Error('圖片上傳失敗')
+            // 2. 呼叫 onSubmit 傳遞表單資料給後端
+            await onSubmit({ platform, profile_url: normalizedUrl, photo_url: photoUrl })
+        } catch (err) {
+            setSubmitError(err.response?.data?.error?.message || err.message || '提交失敗，請稍後再試')
+            setSubmitting(false)
+        }
     }
 
     const labelStyle = { fontSize: 13, color: '#5C5650', fontFamily: font, marginBottom: 6, display: 'block' }
@@ -146,16 +162,23 @@ export function RealPersonModal({ onClose, onSubmit }) {
                     <CheckCircle2 size={16} strokeWidth={2} color="#C4A882" /> 提交中⋯
                 </div>
             ) : (
-                <button onClick={handleSubmit} disabled={!canSubmit} style={{
-                    width: '100%', padding: '14px', borderRadius: 8, border: 'none',
-                    backgroundColor: canSubmit ? '#1C1A18' : '#E8DDD0',
-                    color: canSubmit ? '#F2EDE6' : '#B0A89A',
-                    fontSize: 14, fontWeight: 500, fontFamily: font,
-                    cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    transition: 'background-color 0.15s',
-                }}>
-                    提交驗證
-                </button>
+                <>
+                    <button onClick={handleSubmit} disabled={!canSubmit} style={{
+                        width: '100%', padding: '14px', borderRadius: 8, border: 'none',
+                        backgroundColor: canSubmit ? '#1C1A18' : '#E8DDD0',
+                        color: canSubmit ? '#F2EDE6' : '#B0A89A',
+                        fontSize: 14, fontWeight: 500, fontFamily: font,
+                        cursor: canSubmit ? 'pointer' : 'not-allowed',
+                        transition: 'background-color 0.15s',
+                    }}>
+                        提交驗證
+                    </button>
+                    {submitError && (
+                        <div style={{ fontSize: 12, color: '#E07A5F', fontFamily: font, marginTop: 8, textAlign: 'center' }}>
+                            {submitError}
+                        </div>
+                    )}
+                </>
             )}
         </Overlay>
     )

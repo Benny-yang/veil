@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Clock, Users, MessageCircle, Edit2, ClipboardList, CheckCircle, XCircle, HelpCircle, Bookmark } from 'lucide-react'
 import useIsMobile from '../hooks/useIsMobile'
 import PhotoUpload from '../components/PhotoUpload'
-import { zoneApi, mediaApi } from '../services/api'
+import { zoneApi, mediaApi, verificationApi } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
 
@@ -812,19 +812,22 @@ export default function PrivateCollection() {
     const [myZones, setMyZones] = useState([])       // normalizeZone[]
     const [myApps, setMyApps] = useState([])          // normalizeApp[]
     const [loading, setLoading] = useState(true)
+    const [isVerified, setIsVerified] = useState(false)
 
     // 載入資料
     const loadData = useCallback(async () => {
         if (!currentUser) return
         setLoading(true)
         try {
-            const [zonesRes, appsRes] = await Promise.all([
+            const [zonesRes, appsRes, verRes] = await Promise.all([
                 zoneApi.getMyZones(),
                 zoneApi.getMyApplications(),
+                verificationApi.getRealPersonStatus(),
             ])
             setMyZones((zonesRes.data.data || []).map(normalizeZone))
             setMyApps((appsRes.data.data || []).map(normalizeApp))
-        } catch { /* 保持空狀態 */ }
+            setIsVerified(verRes.data.data?.status === 'verified')
+        } catch (err) { console.error('載入私藏資料失敗:', err) }
         finally { setLoading(false) }
     }, [currentUser])
 
@@ -917,7 +920,7 @@ export default function PrivateCollection() {
                             const now = new Date()
                             const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
                             const thisMonthCount = myZones.filter(z => new Date(z.raw?.created_at) >= monthStart).length
-                            const isLimited = thisMonthCount >= 5
+                            const isLimited = !isVerified && thisMonthCount >= 5
                             return isLimited ? (
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: 8,
@@ -925,7 +928,7 @@ export default function PrivateCollection() {
                                     backgroundColor: '#F0EBE3', border: '1px dashed #D4CCC4',
                                     fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
                                 }}>
-                                    本月已達建立上限（5 次），<span style={{ color: '#C4A882', fontWeight: 600, cursor: 'pointer' }}>完成真人驗證</span>以解除
+                                    本月已達建立上限（5 次），<span onClick={() => navigate('/settings')} style={{ color: '#C4A882', fontWeight: 600, cursor: 'pointer' }}>完成真人驗證</span>以解除
                                 </div>
                             ) : (
                                 <button onClick={() => setShowNewModal(true)} style={{
