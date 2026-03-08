@@ -8,10 +8,13 @@ import (
 	"github.com/benny-yang/veil-api/internal/middleware"
 	"github.com/benny-yang/veil-api/internal/model"
 	"github.com/benny-yang/veil-api/pkg/database"
+	"github.com/benny-yang/veil-api/pkg/notifier"
 	"github.com/benny-yang/veil-api/pkg/response"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+func strPtr(s string) *string { return &s }
 
 type Handler struct {
 	txTimeoutDays map[string]int
@@ -429,7 +432,34 @@ func (h *Handler) UpdateTransaction(c *gin.Context) {
 		updates["cancel_reason"] = req.CancelReason
 	}
 	database.DB.Model(&tx).Updates(updates)
+
+	// 通知交易對方狀態變更
+	var recipientID string
+	if isBuyer {
+		recipientID = tx.SellerID
+	} else {
+		recipientID = tx.BuyerID
+	}
+	txID := tx.ID
+	notifier.Emit(database.DB, recipientID, &userID, model.NotifTxUpdate, &txID, strPtr("transaction"), txStatusMessage(newStatus))
+
 	response.NoContent(c)
+}
+
+// txStatusMessage 將交易狀態轉為通知訊息
+func txStatusMessage(status model.TransactionStatus) string {
+	switch status {
+	case model.TxShipping:
+		return "交易已確認付款"
+	case model.TxReceived:
+		return "賣家已確認寄出"
+	case model.TxCompleted:
+		return "交易已完成"
+	case model.TxCancelled:
+		return "交易已取消"
+	default:
+		return "交易狀態已更新"
+	}
 }
 
 // isValidTransition 驗證交易狀態轉移是否合法

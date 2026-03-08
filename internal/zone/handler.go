@@ -7,10 +7,13 @@ import (
 	"github.com/benny-yang/veil-api/internal/middleware"
 	"github.com/benny-yang/veil-api/internal/model"
 	"github.com/benny-yang/veil-api/pkg/database"
+	"github.com/benny-yang/veil-api/pkg/notifier"
 	"github.com/benny-yang/veil-api/pkg/response"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+func strPtr(s string) *string { return &s }
 
 type Handler struct {
 	monthlyLimit *MonthlyLimitConfig
@@ -318,6 +321,10 @@ func (h *Handler) Apply(c *gin.Context) {
 		response.InternalError(c)
 		return
 	}
+
+	// 通知賣家有新的申請
+	notifier.Emit(database.DB, zone.SellerID, &userID, model.NotifZoneApply, &zoneID, strPtr("zone"), "申請加入你的私藏")
+
 	response.Created(c, app)
 }
 
@@ -424,10 +431,14 @@ func (h *Handler) ReviewApplication(c *gin.Context) {
 			response.InternalError(c)
 			return
 		}
+		// 通知買家申請已通過
+		notifier.Emit(database.DB, app.ApplicantID, &userID, model.NotifZoneApprove, &zoneID, strPtr("zone"), "你的私藏申請已通過")
 	} else {
 		database.DB.Model(&app).Updates(map[string]interface{}{
 			"status": model.ApplicationRejected, "reviewed_at": now,
 		})
+		// 通知買家申請未通過
+		notifier.Emit(database.DB, app.ApplicantID, &userID, model.NotifZoneReject, &zoneID, strPtr("zone"), "你的私藏申請未通過")
 	}
 
 	response.NoContent(c)
@@ -505,6 +516,9 @@ func (h *Handler) SetCollector(c *gin.Context) {
 	if zoneClosed {
 		database.DB.Model(&zone).Update("status", model.ZoneStatusEnded)
 	}
+
+	// 通知買家已成為私藏家
+	notifier.Emit(database.DB, app.ApplicantID, &userID, model.NotifZoneApprove, &zoneID, strPtr("zone"), "你已成為私藏家")
 
 	response.OK(c, gin.H{
 		"is_collector":   true,

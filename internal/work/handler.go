@@ -7,11 +7,14 @@ import (
 	"github.com/benny-yang/veil-api/internal/middleware"
 	"github.com/benny-yang/veil-api/internal/model"
 	"github.com/benny-yang/veil-api/pkg/database"
+	"github.com/benny-yang/veil-api/pkg/notifier"
 	"github.com/benny-yang/veil-api/pkg/response"
 	"github.com/benny-yang/veil-api/pkg/tagging"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+func strPtr(s string) *string { return &s }
 
 type Handler struct{}
 
@@ -305,6 +308,13 @@ func (h *Handler) AddComment(c *gin.Context) {
 	var profile model.UserProfile
 	database.DB.Where("user_id = ?", userID).First(&profile)
 	comment.Author = &profile
+
+	// 通知作品擁有者有新留言
+	var work model.Work
+	if database.DB.Select("user_id").First(&work, "id = ?", workID).Error == nil {
+		notifier.Emit(database.DB, work.UserID, &userID, model.NotifComment, &workID, strPtr("work"), "在你的作品留言")
+	}
+
 	response.Created(c, comment)
 }
 
@@ -352,6 +362,13 @@ func (h *Handler) LikeWork(c *gin.Context) {
 		response.Conflict(c, "ALREADY_LIKED", "已按讚")
 		return
 	}
+
+	// 通知作品擁有者被按讚
+	var work model.Work
+	if database.DB.Select("user_id").First(&work, "id = ?", workID).Error == nil {
+		notifier.Emit(database.DB, work.UserID, &userID, model.NotifLike, &workID, strPtr("work"), "對你的作品按讚")
+	}
+
 	response.NoContent(c)
 }
 
