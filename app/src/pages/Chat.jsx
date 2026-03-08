@@ -23,7 +23,7 @@ const DEV_TIMEOUT = 60 * 1000 // 1 分鐘
 const TIMEOUT_MS = {
     pending: import.meta.env.DEV ? DEV_TIMEOUT : 3 * msPerDay,
     shipping: import.meta.env.DEV ? DEV_TIMEOUT : 7 * msPerDay,
-    received: import.meta.env.DEV ? DEV_TIMEOUT : 14 * msPerDay,
+    received: import.meta.env.DEV ? DEV_TIMEOUT : 7 * msPerDay,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

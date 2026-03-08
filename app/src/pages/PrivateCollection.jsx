@@ -367,9 +367,9 @@ function ZoneFormFields({ values, onChange, isEditing = false }) {
 
             {/* 私藏照片 */}
             <div>
-                <FieldLabel>私藏照片</FieldLabel>
+                <FieldLabel required>私藏照片</FieldLabel>
                 <div style={{ fontSize: 11, color: '#B0A89A', fontFamily: 'Noto Sans TC, sans-serif', marginBottom: 8 }}>
-                    最多 5 張・點擊照片設為封面
+                    至少 1 張，最多 5 張・點擊照片設為封面
                 </div>
                 <PhotoUpload
                     photos={values.photos || []}
@@ -385,15 +385,18 @@ function ZoneFormFields({ values, onChange, isEditing = false }) {
             <div>
                 <FieldLabel required>私藏時效</FieldLabel>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <input type="date" value={startDate} min={today}
-                        onChange={e => onChange('startDate', e.target.value)}
-                        disabled={isEditing}
-                        style={{ ...zoneInputStyle, flex: 1, ...(isEditing ? { backgroundColor: '#EEEAE4', color: '#8C8479', cursor: 'not-allowed' } : {}) }} onFocus={focus} onBlur={blur} />
+                    <div style={{
+                        ...zoneInputStyle, flex: 1,
+                        backgroundColor: '#EEEAE4', color: '#8C8479',
+                        display: 'flex', alignItems: 'center',
+                    }}>
+                        {today}（開設當天）
+                    </div>
                     <span style={{
                         fontSize: 13, color: '#8C8479', flexShrink: 0,
                         fontFamily: 'Noto Sans TC, sans-serif'
                     }}>至</span>
-                    <input type="date" value={endDate} min={startDate || today}
+                    <input type="date" value={endDate} min={today}
                         onChange={e => onChange('endDate', e.target.value)}
                         style={{ ...zoneInputStyle, flex: 1 }} onFocus={focus} onBlur={blur} />
                 </div>
@@ -646,7 +649,7 @@ function EditZoneModal({ zone, onClose, onUpdated }) {
 function NewZoneModal({ onClose, onCreated }) {
     const [values, setValues] = useState({
         title: '', desc: '', startDate: '', endDate: '',
-        slots: '3', creditMin: '0', requireIntro: true, photos: [], coverId: '', category: 'other',
+        slots: '3', creditMin: '0', requireIntro: true, photos: [], coverId: '', category: 'top',
     })
     const onChange = (k, v) => setValues(prev => ({ ...prev, [k]: v }))
     const [saving, setSaving] = useState(false)
@@ -680,7 +683,12 @@ function NewZoneModal({ onClose, onCreated }) {
             })
             onCreated?.()
             onClose()
-        } catch { /* 保持 Modal 開啟 */ } finally { setSaving(false) }
+        } catch (err) {
+            const errorCode = err.response?.data?.error?.code
+            if (errorCode === 'MONTHLY_LIMIT_EXCEEDED') {
+                alert(err.response?.data?.error?.message || '本月建立私藏次數已達上限，請完成真人驗證以解除限制')
+            }
+        } finally { setSaving(false) }
     }
 
     return (
@@ -715,12 +723,12 @@ function NewZoneModal({ onClose, onCreated }) {
                         border: '1px solid #E8DDD0', backgroundColor: '#FFFFFF',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', color: '#8C8479', cursor: 'pointer',
                     }}>取消</button>
-                    <button onClick={handleCreate} disabled={saving || !values.title.trim()} style={{
+                    <button onClick={handleCreate} disabled={saving || !values.title.trim() || (values.photos || []).length === 0} style={{
                         flex: 1, padding: '13px 0', borderRadius: 8, border: 'none',
-                        backgroundColor: (values.title.trim() && !saving) ? '#1C1A18' : '#D4CCC4',
+                        backgroundColor: (values.title.trim() && (values.photos || []).length > 0 && !saving) ? '#1C1A18' : '#D4CCC4',
                         fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif',
                         fontWeight: 600, color: '#F2EDE6',
-                        cursor: (values.title.trim() && !saving) ? 'pointer' : 'not-allowed',
+                        cursor: (values.title.trim() && (values.photos || []).length > 0 && !saving) ? 'pointer' : 'not-allowed',
                     }}>{saving ? '開設中⋯' : '開設私藏'}</button>
                 </div>
                 <div style={{
@@ -905,21 +913,36 @@ export default function PrivateCollection() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                         {/* New Zone Button */}
-                        {isMine && (
-                            <button onClick={() => setShowNewModal(true)} style={{
-                                display: 'flex', alignItems: 'center', gap: 8,
-                                padding: '10px 20px', borderRadius: 8, border: 'none',
-                                backgroundColor: '#1C1A18', color: '#F2EDE6',
-                                fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
-                                cursor: 'pointer', transition: 'background-color 0.15s',
-                            }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#2D2926'}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#1C1A18'}
-                            >
-                                <Plus size={16} strokeWidth={2} />
-                                開設新私藏
-                            </button>
-                        )}
+                        {isMine && (() => {
+                            const now = new Date()
+                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+                            const thisMonthCount = myZones.filter(z => new Date(z.raw?.created_at) >= monthStart).length
+                            const isLimited = thisMonthCount >= 5
+                            return isLimited ? (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '10px 20px', borderRadius: 8,
+                                    backgroundColor: '#F0EBE3', border: '1px dashed #D4CCC4',
+                                    fontSize: 12, color: '#8C8479', fontFamily: 'Noto Sans TC, sans-serif',
+                                }}>
+                                    本月已達建立上限（5 次），<span style={{ color: '#C4A882', fontWeight: 600, cursor: 'pointer' }}>完成真人驗證</span>以解除
+                                </div>
+                            ) : (
+                                <button onClick={() => setShowNewModal(true)} style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '10px 20px', borderRadius: 8, border: 'none',
+                                    backgroundColor: '#1C1A18', color: '#F2EDE6',
+                                    fontSize: 13, fontFamily: 'Noto Sans TC, sans-serif', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'background-color 0.15s',
+                                }}
+                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#2D2926'}
+                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#1C1A18'}
+                                >
+                                    <Plus size={16} strokeWidth={2} />
+                                    開設新私藏
+                                </button>
+                            )
+                        })()}
 
                         {/* Main Tab Toggle */}
                         <div style={{ display: 'flex', border: '1px solid #E8DDD0', borderRadius: 20, overflow: 'hidden' }}>

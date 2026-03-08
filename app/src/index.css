@@ -18,3 +18,8 @@
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
+
+/* ── 隱藏捲軸但保持可捲動 ── */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

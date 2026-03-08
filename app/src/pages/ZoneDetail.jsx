@@ -135,7 +135,12 @@ export default function ZoneDetail() {
             setSubmitted(true)
             setShowModal(true)
         } catch (err) {
-            setSubmitError(err.response?.data?.error?.message || '申請失敗，請稍後再試')
+            const errorCode = err.response?.data?.error?.code
+            if (errorCode === 'MONTHLY_LIMIT_EXCEEDED') {
+                setSubmitError(err.response?.data?.error?.message || '本月申請次數已達上限，請完成真人驗證以解除限制')
+            } else {
+                setSubmitError(err.response?.data?.error?.message || '申請失敗，請稍後再試')
+            }
         } finally {
             setSubmitting(false)
         }
@@ -200,7 +205,7 @@ export default function ZoneDetail() {
                 </div>
 
                 {/* ── 右側：資訊 ─────────────────────────────────────────────── */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20, overflowY: isMobile ? 'visible' : 'auto', padding: isMobile ? '20px 16px 100px' : '0 0 24px' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 20, overflowY: isMobile ? 'visible' : 'auto', padding: isMobile ? '20px 16px 100px' : '0 0 24px', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="hide-scrollbar">
                     <Link to="/explore" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#8C8479', textDecoration: 'none', fontFamily: 'Noto Sans TC, sans-serif' }}>
                         <ArrowLeft size={13} strokeWidth={1.5} />返回探索
                     </Link>
