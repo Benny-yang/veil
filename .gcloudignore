@@ -1,4 +1,11 @@
 # Cloud Build 忽略清單
 .git
-node_modules
+.env
+.env.development
+.env.staging
+.env.production
+uploads/
+*.exe
+*.out
 .DS_Store
+*.log

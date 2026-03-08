@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/benny-yang/veil-api/internal/config"
 	"gorm.io/driver/mysql"
@@ -13,10 +14,20 @@ import (
 var DB *gorm.DB
 
 func Init(cfg *config.Config) error {
-	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName,
-	)
+	var dsn string
+	if strings.HasPrefix(cfg.DBHost, "/") {
+		// Cloud SQL Unix socket 路徑（例如 /cloudsql/project:region:instance）
+		dsn = fmt.Sprintf(
+			"%s:%s@unix(%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBName,
+		)
+	} else {
+		// 一般 TCP 連線
+		dsn = fmt.Sprintf(
+			"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName,
+		)
+	}
 
 	logLevel := logger.Silent
 	if cfg.AppEnv == "development" {
